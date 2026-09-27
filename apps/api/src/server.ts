@@ -2,6 +2,7 @@ import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { disconnectDb, getDb } from "./db.js";
 import { createEmailProvider } from "./email/index.js";
+import { InMemoryHub } from "./services/realtime.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -9,6 +10,7 @@ async function main(): Promise<void> {
     config,
     db: getDb(),
     email: createEmailProvider(config),
+    hub: new InMemoryHub(),
   });
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {

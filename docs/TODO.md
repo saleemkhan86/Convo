@@ -1,19 +1,27 @@
 # Convo — Deferred Features (TODO)
 
-Tracked against the MVP phasing in spec §35. Phase 1 (architecture, database,
-auth, identity model, profile) is implemented; everything below is deferred by
-design, not forgotten.
+Tracked against the MVP phasing in spec §35. Phases 1–2 core (architecture,
+database, auth, identity model, profile, realtime 1-1 Chats on web + mobile) are
+implemented; everything below is deferred by design, not forgotten.
 
 ## Phase 2 — Phone Chats
-- [ ] WebSocket gateway (`@fastify/websocket`), per-conversation topics
-- [ ] One-to-one conversations + messages API (schema ready: `conversations`,
-      `conversation_members`, `messages`, `message_receipts`)
-- [ ] Offline outbox + idempotent send retries (`clientMessageId` unique per sender)
-- [ ] Sent/delivered/read states, unread counts, typing indicator, presence
+- [x] WebSocket gateway (`@fastify/websocket`), downstream fan-out via `RealtimeHub`
+- [x] One-to-one conversations + messages API (`conversations`,
+      `conversation_members`, `messages`; cursor pagination)
+- [x] Offline outbox + idempotent send retries (`clientMessageId` unique per sender)
+      — web persists to `localStorage`; mobile outbox is in-memory (see below)
+- [x] Read states, unread counts, typing indicator, presence
+- [ ] Sent/delivered/read **receipt ticks per message** (currently a single ✓ on
+      own messages; `message_receipts` table ready for delivery/read granularity)
 - [ ] Push notifications (FCM) + web push; `devices` table ready
-- [ ] Group chats, reactions, reply/edit/delete/forward
+- [ ] Group chats, reactions, reply/edit/delete/forward (reply-to is stored and
+      validated on send, but no edit/delete/forward UI yet)
 - [ ] Media messages: images, video, documents, voice notes (object storage +
       `attachments` table ready, `scanStatus` column for malware-scan pipeline)
+- [ ] Persist the mobile outbox across app restarts (needs AsyncStorage or a
+      SecureStore chunking scheme; kept out of Phase 2 to stay Expo-Go runnable)
+- [ ] Scale `RealtimeHub` beyond single-process `InMemoryHub` (Redis pub/sub
+      adapter behind the existing interface)
 
 ## Phase 3 — Mail (Convo-to-Convo)
 - [ ] Mail thread list + conversation timeline UI (chat-style, spec §10, §17)

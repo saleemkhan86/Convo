@@ -135,8 +135,7 @@ export function Muted({ children, palette }: { children: ReactNode; palette: Pal
   return <Text style={{ fontSize: 14, lineHeight: 21, color: palette.textMuted }}>{children}</Text>;
 }
 
-export function LogoMark({ size = 36 }: { size?: number }) {
-  return (
+export function LogoMark({ size = 36 }: { size?: number }) {  return (
     <View
       style={{
         width: size,
@@ -148,6 +147,48 @@ export function LogoMark({ size = 36 }: { size?: number }) {
       }}
     >
       <Text style={{ color: colors.white, fontSize: size * 0.5, fontWeight: "900" }}>C</Text>
+    </View>
+  );
+}
+
+export function Avatar({
+  initial,
+  online,
+  size = 44,
+}: {
+  initial: string;
+  online?: boolean;
+  size?: number;
+}) {
+  return (
+    <View style={{ width: size, height: size }}>
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: colors.iris600,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Text style={{ color: colors.white, fontSize: size * 0.4, fontWeight: "800" }}>{initial}</Text>
+      </View>
+      {online && (
+        <View
+          style={{
+            position: "absolute",
+            right: -1,
+            bottom: -1,
+            width: size * 0.3,
+            height: size * 0.3,
+            borderRadius: size * 0.15,
+            backgroundColor: colors.success,
+            borderWidth: 2,
+            borderColor: colors.white,
+          }}
+        />
+      )}
     </View>
   );
 }

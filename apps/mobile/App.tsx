@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, View, useColorScheme } from "react-native";
-import type { Account, AuthResult } from "@convo/shared";
+import type { Account, AuthResult, ConversationSummary } from "@convo/shared";
 import { api, hydrateSession } from "./src/api";
+import { connectRealtime, disconnectRealtime } from "./src/realtime";
 import { AuthScreen } from "./src/screens/AuthScreen";
+import { ChatRoomScreen } from "./src/screens/ChatRoomScreen";
 import { ConnectIdentityScreen } from "./src/screens/ConnectIdentityScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
@@ -15,6 +17,7 @@ type Route =
   | { name: "auth"; channel: AuthChannel }
   | { name: "home" }
   | { name: "settings" }
+  | { name: "chatRoom"; conversation: ConversationSummary }
   | { name: "connect"; channel: "email" | "phone" };
 
 export default function App() {
@@ -57,6 +60,14 @@ export default function App() {
     setRoute({ name: "welcome" });
   };
 
+  // Keep the realtime socket alive for as long as we're authenticated.
+  const authed = account !== null;
+  useEffect(() => {
+    if (!authed) return;
+    connectRealtime();
+    return () => disconnectRealtime();
+  }, [authed]);
+
   if (bootstrapping) {
     return (
       <View style={{ flex: 1, backgroundColor: palette.bg, alignItems: "center", justifyContent: "center" }}>
@@ -83,6 +94,14 @@ export default function App() {
           account={account}
           onOpenSettings={() => setRoute({ name: "settings" })}
           onConnect={(channel) => setRoute({ name: "connect", channel })}
+          onOpenChat={(conversation) => setRoute({ name: "chatRoom", conversation })}
+        />
+      )}
+      {route.name === "chatRoom" && account && (
+        <ChatRoomScreen
+          conversation={route.conversation}
+          account={account}
+          onBack={() => setRoute({ name: "home" })}
         />
       )}
       {route.name === "settings" && account && (

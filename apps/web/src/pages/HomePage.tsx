@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { ChatsSection } from "../components/ChatsSection";
 import { ChatIcon, ContactsIcon, MailIcon, PhoneIcon, PlusIcon, SearchIcon, SettingsIcon } from "../components/icons";
 import { Badge, Button, Logo, cx } from "../components/ui";
 import { useAuth } from "../lib/auth";
@@ -9,6 +10,7 @@ type Section = "chats" | "mail";
 export function HomePage() {
   const { account } = useAuth();
   const [section, setSection] = useState<Section>("chats");
+  const [newChatNonce, setNewChatNonce] = useState(0);
 
   if (!account) return null;
   const chatsAvailable = account.capabilities.chats;
@@ -70,18 +72,29 @@ export function HomePage() {
                 className="w-52 rounded-full border border-ink-200 bg-ink-50 py-2 pl-9 pr-4 text-sm placeholder:text-ink-400 focus:border-iris-400 focus:outline-none disabled:opacity-50 dark:border-night-border dark:bg-night-raised"
               />
             </div>
-            <Button className="!px-3.5" disabled={!activeAvailable} title={activeAvailable ? "New" : "Connect an identity first"}>
+            <Button
+              className="!px-3.5"
+              disabled={!activeAvailable}
+              title={activeAvailable ? "New" : "Connect an identity first"}
+              onClick={() => {
+                if (section === "chats") setNewChatNonce((n) => n + 1);
+              }}
+            >
               <PlusIcon className="h-4 w-4" />
               <span className="hidden sm:inline">{section === "chats" ? "New chat" : "New mail"}</span>
             </Button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto">
-          {activeAvailable ? (
-            <EmptyConversations section={section} />
-          ) : (
+        <div className="min-h-0 flex-1">
+          {!activeAvailable ? (
             <ConnectIdentityPrompt section={section} />
+          ) : section === "chats" ? (
+            <ChatsSection newChatNonce={newChatNonce} />
+          ) : (
+            <div className="h-full overflow-y-auto">
+              <EmptyConversations section="mail" />
+            </div>
           )}
         </div>
 

@@ -1,4 +1,4 @@
-# Convo API Reference (v0.1 — Phase 1)
+# Convo API Reference (v0.2 — Phase 2: Chats)
 
 Base URL: `http://localhost:4000` (web dev proxy: `/api`).
 
@@ -104,9 +104,93 @@ Conflict rules:
 | GET | `/me` | ✓ | – | `Account` |
 | PATCH | `/me/profile` | ✓ | `{ displayName?, avatarUrl?, bio? }` (null clears) | `Account` |
 
+## Chats (Phase 2, spec §9/§22/§23)
+
+Requires a valid access token **and** a connected phone identity
+(`capabilities.chats`). Requests from an account without a phone identity return
+403 with "Connect a phone number to start using Chats".
+
+Sending always goes over HTTP so the client can retry safely: the client-generated
+`clientMessageId` (a UUID) makes a retry return the original message instead of
+creating a duplicate. The WebSocket is downstream-only (plus typing/read signals),
+so a dropped connection can never duplicate or lose a message.
+
+### Objects
+
+```jsonc
+// ConversationPeer
+{ "userId": "clx...", "displayName": "Alice", "avatarUrl": null, "phone": "+919800000001" }
+
+// Message
+{
+  "id": "clx...", "conversationId": "clx...", "senderId": "clx...",
+  "clientMessageId": "uuid", "type": "TEXT", "body": "Hi",
+  "replyToId": null, "editedAt": null, "deletedAt": null,
+  "createdAt": "2026-09-26T12:00:00.000Z"
+}
+
+// ConversationSummary
+{
+  "id": "clx...", "type": "DIRECT", "title": null,
+  "peer": { /* ConversationPeer */ }, "lastMessage": { /* Message */ },
+  "unreadCount": 2, "pinned": false, "archived": false, "mutedUntil": null,
+  "lastReadAt": "2026-09-26T12:00:00.000Z",
+  "lastMessageAt": "2026-09-26T12:05:00.000Z"
+}
+```
+
+### REST endpoints
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| POST | `/conversations/start` | `{ phone }` (E.164) | `ConversationSummary` |
+| GET | `/conversations` | `?cursor?&limit=50` (1–100) | `{ conversations: [...], nextCursor }` |
+| GET | `/conversations/:id/messages` | `?cursor?&limit=50` | `{ messages: [...], nextCursor }` (oldest-first page) |
+| POST | `/conversations/:id/messages` | `{ clientMessageId, body, replyToId? }` | `Message` |
+| POST | `/conversations/:id/read` | `{ messageId? }` (defaults to latest) | `{ ok: true }` |
+
+Semantics:
+- `start` is idempotent — starting with the same peer returns the existing DIRECT
+  conversation. Unknown/inactive/self/blocked targets all return a single
+  non-enumerating 404 "No Convo account found for that phone number".
+- Message `body` is trimmed, 1–4096 chars. `clientMessageId` must be a UUID and is
+  unique per sender; reusing one in a different conversation returns 400.
+- Pagination cursors are opaque; pass `nextCursor` back as `cursor` for the next page.
+- Rate limits: `start` 30/min, send message 120/min.
+
+### WebSocket — `GET /ws?token=<accessToken>`
+
+Browsers cannot set headers on a WebSocket handshake, so the JWT is passed as a
+query param. On an invalid/expired token or a non-active user the server closes
+with code **4401**; the client should refresh its access token and reconnect. On
+success the server sends `{ "type": "ready", "userId": "clx..." }`.
+
+All frames are JSON. Client → server:
+
+| `type` | Payload | Purpose |
+|---|---|---|
+| `ping` | – | Keepalive; server replies `pong`. |
+| `watch` | `{ userIds: string[] }` (1–100) | Subscribe to presence for these users. |
+| `typing` | `{ conversationId, isTyping }` | Forwarded to the peer(s) of that conversation. |
+| `read` | `{ conversationId, messageId? }` | Marks read (same as the REST endpoint) and fans out `message.read`. |
+
+Server → client:
+
+| `type` | Payload |
+|---|---|
+| `ready` | `{ userId }` |
+| `pong` | – |
+| `message.new` | `{ message }` — fanned out to the conversation's other members. |
+| `message.read` | `{ conversationId, userId, readAt }` |
+| `typing` | `{ conversationId, userId, isTyping }` |
+| `presence` | `{ userId, online }` — emitted on online-state transitions for watched users. |
+
+Scaling note: the hub is a single-process `InMemoryHub`. The `RealtimeHub`
+interface is the seam where a Redis pub/sub adapter drops in for multi-instance
+deployments.
+
 ## Planned (later phases)
 
-Conversation/message endpoints (Phase 2), mail threads + composer endpoints
-(Phase 3), external email gateway webhooks/queue (Phase 4), attachments,
-search, contacts (Phase 5). Contracts will live in `packages/shared` as they
-ship.
+Mail threads + composer endpoints (Phase 3), external email gateway
+webhooks/queue (Phase 4), attachments, search, contacts, groups (Phase 5).
+Contracts live in `packages/shared` as they ship.

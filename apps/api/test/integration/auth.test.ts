@@ -5,6 +5,7 @@ import type { Account, AuthResult, Challenge, SessionTokens } from "@convo/share
 import { buildApp } from "../../src/app";
 import { loadConfig } from "../../src/config";
 import { createEmailProvider } from "../../src/email/index";
+import { InMemoryHub } from "../../src/services/realtime";
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
@@ -22,7 +23,7 @@ describe.skipIf(!TEST_DATABASE_URL)("auth + identity integration", () => {
       OTP_RESEND_COOLDOWN_SECONDS: "0",
     } as NodeJS.ProcessEnv);
     db = new PrismaClient();
-    app = await buildApp({ config, db, email: createEmailProvider(config) });
+    app = await buildApp({ config, db, email: createEmailProvider(config), hub: new InMemoryHub() });
     await app.ready();
 
     // clean slate

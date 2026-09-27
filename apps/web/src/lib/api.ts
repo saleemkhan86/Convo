@@ -2,6 +2,10 @@ import type {
   Account,
   AuthResult,
   Challenge,
+  ConversationList,
+  ConversationSummary,
+  Message,
+  MessagePage,
   SessionTokens,
   UpdateProfileRequest,
 } from "@convo/shared";
@@ -49,7 +53,7 @@ export class ApiRequestError extends Error {
 
 let refreshInFlight: Promise<boolean> | null = null;
 
-async function tryRefresh(): Promise<boolean> {
+export async function tryRefresh(): Promise<boolean> {
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       const session = loadSession();
@@ -136,4 +140,45 @@ export const api = {
     request<Challenge>("/identities/phone/request-otp", { method: "POST", body: { phone }, auth: true }),
   connectPhoneVerify: (challengeId: string, code: string) =>
     request<Account>("/identities/phone/verify-otp", { method: "POST", body: { challengeId, code }, auth: true }),
+
+  startConversation: (phone: string) =>
+    request<ConversationSummary>("/conversations/start", { method: "POST", body: { phone }, auth: true }),
+  listConversations: (cursor?: string, limit = 50) =>
+    request<ConversationList>(`/conversations${query({ cursor, limit })}`, { auth: true }),
+  listMessages: (conversationId: string, cursor?: string, limit = 50) =>
+    request<MessagePage>(`/conversations/${conversationId}/messages${query({ cursor, limit })}`, { auth: true }),
+  sendMessage: (conversationId: string, body: { clientMessageId: string; body: string; replyToId?: string }) =>
+    request<Message>(`/conversations/${conversationId}/messages`, { method: "POST", body, auth: true }),
+  markRead: (conversationId: string, messageId?: string) =>
+    request<{ ok: true }>(`/conversations/${conversationId}/read`, { method: "POST", body: { messageId }, auth: true }),
 };
+
+function query(params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  }
+  const qs = search.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/** Absolute access token for the current session, or null. */
+export function currentAccessToken(): string | null {
+  return loadSession()?.accessToken ?? null;
+}
+
+/**
+ * WebSocket URL for the realtime gateway, derived from API_BASE so it works
+ * through the Vite dev proxy (relative "/api") and in production (absolute).
+ */
+export function realtimeUrl(): string {
+  const token = currentAccessToken();
+  if (!token) return "";
+  const path = `/ws?token=${encodeURIComponent(token)}`;
+  if (API_BASE.startsWith("http")) {
+    return API_BASE.replace(/^http/, "ws") + path;
+  }
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const base = API_BASE.replace(/^\//, "");
+  return `${proto}//${window.location.host}/${base}${path}`;
+}

@@ -2,6 +2,10 @@ import type {
   Account,
   AuthResult,
   Challenge,
+  ConversationList,
+  ConversationSummary,
+  Message,
+  MessagePage,
   SessionTokens,
 } from "@convo/shared";
 import { API_BASE, clearStoredSession, loadStoredSession, storeSession, type StoredSession } from "./storage";
@@ -25,7 +29,7 @@ export async function hydrateSession(): Promise<StoredSession | null> {
 
 let refreshInFlight: Promise<boolean> | null = null;
 
-async function tryRefresh(): Promise<boolean> {
+export async function tryRefresh(): Promise<boolean> {
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       if (!currentSession) return false;
@@ -124,4 +128,39 @@ export const api = {
     request<Challenge>("/identities/phone/request-otp", { method: "POST", body: { phone }, auth: true }),
   connectPhoneVerify: (challengeId: string, code: string) =>
     request<Account>("/identities/phone/verify-otp", { method: "POST", body: { challengeId, code }, auth: true }),
+
+  startConversation: (phone: string) =>
+    request<ConversationSummary>("/conversations/start", { method: "POST", body: { phone }, auth: true }),
+  listConversations: (cursor?: string, limit = 50) =>
+    request<ConversationList>(`/conversations${query({ cursor, limit })}`, { auth: true }),
+  listMessages: (conversationId: string, cursor?: string, limit = 50) =>
+    request<MessagePage>(`/conversations/${conversationId}/messages${query({ cursor, limit })}`, { auth: true }),
+  sendMessage: (conversationId: string, body: { clientMessageId: string; body: string; replyToId?: string }) =>
+    request<Message>(`/conversations/${conversationId}/messages`, { method: "POST", body, auth: true }),
+  markRead: (conversationId: string, messageId?: string) =>
+    request<{ ok: true }>(`/conversations/${conversationId}/read`, { method: "POST", body: { messageId }, auth: true }),
 };
+
+function query(params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") search.set(key, String(value));
+  }
+  const qs = search.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/** Access token for the current in-memory session, or null. */
+export function currentAccessToken(): string | null {
+  return currentSession?.accessToken ?? null;
+}
+
+/**
+ * WebSocket URL for the realtime gateway. API_BASE is always absolute on mobile,
+ * so http(s) maps directly to ws(s).
+ */
+export function realtimeUrl(): string {
+  const token = currentAccessToken();
+  if (!token) return "";
+  return `${API_BASE.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token)}`;
+}

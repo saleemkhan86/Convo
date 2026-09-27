@@ -2,13 +2,16 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import rateLimit from "@fastify/rate-limit";
+import websocket from "@fastify/websocket";
 import { ApiErrorCode } from "@convo/shared";
 import type { AppDeps } from "./deps.js";
 import { AppError, sendError } from "./lib/errors.js";
 import { authRoutes } from "./routes/auth.js";
+import { conversationRoutes } from "./routes/conversations.js";
 import { healthRoutes } from "./routes/health.js";
 import { identityRoutes } from "./routes/identities.js";
 import { meRoutes } from "./routes/me.js";
+import { wsRoutes } from "./routes/ws.js";
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
@@ -26,6 +29,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(jwt, {
     secret: deps.config.JWT_SECRET,
     sign: { algorithm: "HS256" },
+  });
+
+  await app.register(websocket, {
+    options: { maxPayload: 64 * 1024 },
   });
 
   await app.register(rateLimit, {
@@ -77,6 +84,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(authRoutes, deps);
   await app.register(identityRoutes, deps);
   await app.register(meRoutes, deps);
+  await app.register(conversationRoutes, deps);
+  await app.register(wsRoutes, deps);
 
   return app;
 }

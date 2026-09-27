@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Spinner } from "./components/ui";
 import { useAuth } from "./lib/auth";
+import { RealtimeProvider } from "./lib/realtime";
 import { EmailAuthPage, PhoneAuthPage } from "./pages/AuthPages";
 import { ConnectIdentityPage } from "./pages/ConnectIdentityPage";
 import { HomePage } from "./pages/HomePage";
@@ -13,7 +14,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (status === "loading") return <FullScreenLoader />;
   if (status === "signed-out") return <Navigate to="/welcome" replace state={{ from: location }} />;
-  return <>{children}</>;
+  return <RealtimeProvider>{children}</RealtimeProvider>;
 }
 
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
