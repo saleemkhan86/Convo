@@ -1,0 +1,529 @@
+// Convo database schema.
+//
+// Central rule (spec §32): ONE user record per Convo account. Phone and email
+// are identities attached to that account, each optional, at most one of each.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Accounts & identities ───────────────────────────
+
+model User {
+  id          String   @id @default(cuid())
+  displayName String?  @db.VarChar(64)
+  avatarUrl   String?  @db.VarChar(2048)
+  bio         String?  @db.VarChar(280)
+  status      UserStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  phoneIdentity PhoneIdentity?
+  emailIdentity EmailIdentity?
+
+  sessions            RefreshToken[]
+  devices             Device[]
+  challengesIssued    VerificationChallenge[] @relation("ChallengeUser")
+  contacts            Contact[]
+  memberships         ConversationMember[]
+  sentMessages        Message[]        @relation("MessageSender")
+  reactions           MessageReaction[]
+  receipts            MessageReceipt[]
+  emailThreads        EmailThread[]
+  emailMessages       EmailMessage[]
+  notifications       Notification[]
+  blocks              BlockedUser[]    @relation("Blocker")
+  blockedBy           BlockedUser[]    @relation("Blocked")
+  reportsFiled        Report[]         @relation("Reporter")
+  auditLogs           AuditLog[]
+  emailSendUsage      EmailSendUsage[]
+
+  @@index([createdAt])
+}
+
+enum UserStatus {
+  ACTIVE
+  DEACTIVATED
+  BANNED
+}
+
+/// Phone identity: enables Chats. At most one per user (unique userId),
+/// and a phone number maps to at most one account (unique phone).
+model PhoneIdentity {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  phone     String   @unique @db.VarChar(16) // normalized E.164
+  verifiedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Email identity: enables Mail. Same uniqueness rules as PhoneIdentity.
+model EmailIdentity {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  email      String   @unique @db.VarChar(320) // normalized lowercase
+  verifiedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// OTP challenges for login (flows A–D) and identity linking (flow E).
+/// The code is stored hashed; attempts are capped to prevent brute force.
+model VerificationChallenge {
+  id          String            @id @default(cuid())
+  channel     ChallengeChannel
+  purpose     ChallengePurpose
+  target      String            @db.VarChar(320) // phone (E.164) or email (lowercase)
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int               @default(0)
+  consumedAt  DateTime?
+  createdAt   DateTime          @default(now())
+
+  // Set for CONNECT purposes: the account the identity will attach to.
+  userId      String?
+  user        User?             @relation("ChallengeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([target, purpose, createdAt])
+}
+
+enum ChallengeChannel {
+  PHONE
+  EMAIL
+}
+
+enum ChallengePurpose {
+  LOGIN
+  CONNECT_IDENTITY
+}
+
+// ─────────────────────────── Sessions & devices ──────────────────────────────
+
+/// Opaque refresh tokens, stored hashed, rotated on use, revocable per device.
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  deviceInfo String?  @db.VarChar(255)
+  ip        String?   @db.VarChar(45)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  replacedById String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+model Device {
+  id        String   @id @default(cuid())
+  userId    String
+  platform  DevicePlatform
+  pushToken String?  @db.VarChar(512)
+  appVersion String? @db.VarChar(32)
+  lastSeenAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pushToken])
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+  WEB
+  DESKTOP
+}
+
+// ─────────────────────────── Contacts ────────────────────────────────────────
+
+model Contact {
+  id          String   @id @default(cuid())
+  ownerId     String
+  displayName String   @db.VarChar(128)
+  phone       String?  @db.VarChar(16)
+  email       String?  @db.VarChar(320)
+  avatarUrl   String?  @db.VarChar(2048)
+  source      ContactSource @default(MANUAL)
+  // Resolved Convo account, if the identity matched one (secure matching only).
+  convoUserId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, phone])
+  @@unique([ownerId, email])
+  @@index([ownerId])
+}
+
+enum ContactSource {
+  MANUAL
+  SYNCED
+  RECENT
+}
+
+// ─────────────────────────── Phone Chats ─────────────────────────────────────
+
+model Conversation {
+  id            String   @id @default(cuid())
+  type          ConversationType
+  title         String?  @db.VarChar(128) // groups only
+  avatarUrl     String?  @db.VarChar(2048)
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  lastMessageAt DateTime?
+
+  members  ConversationMember[]
+  messages Message[]
+
+  @@index([lastMessageAt])
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+model ConversationMember {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  role           MemberRole @default(MEMBER)
+  joinedAt       DateTime @default(now())
+  leftAt         DateTime?
+  pinned         Boolean  @default(false)
+  archived       Boolean  @default(false)
+  mutedUntil     DateTime?
+  lastReadAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId, archived, pinned])
+}
+
+enum MemberRole {
+  MEMBER
+  ADMIN
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String?  // null for system messages
+  /// Client-generated UUID enabling idempotent retries (spec §22).
+  clientMessageId String  @default(cuid())
+  type           MessageType @default(TEXT)
+  body           String?  @db.Text
+  replyToId      String?
+  editedAt       DateTime?
+  deletedAt      DateTime? // soft delete; body/attachments cleared
+  createdAt      DateTime @default(now())
+
+  conversation Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?            @relation("MessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+  replyTo      Message?         @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies      Message[]        @relation("MessageReply")
+  attachments  Attachment[]
+  reactions    MessageReaction[]
+  receipts     MessageReceipt[]
+
+  @@unique([senderId, clientMessageId])
+  @@index([conversationId, createdAt])
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  DOCUMENT
+  VOICE
+  SYSTEM
+}
+
+model Attachment {
+  id          String   @id @default(cuid())
+  messageId   String?
+  emailMessageId String?
+  kind        AttachmentKind
+  mimeType    String   @db.VarChar(128)
+  sizeBytes   BigInt
+  storageKey  String   @unique // object-storage key; downloads via expiring URLs
+  fileName    String?  @db.VarChar(255)
+  width       Int?
+  height      Int?
+  durationMs  Int?
+  scanStatus  ScanStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+
+  message      Message?      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  emailMessage EmailMessage? @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+}
+
+enum AttachmentKind {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  VOICE
+  OTHER
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String   @db.VarChar(16)
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+}
+
+/// Per-recipient delivered/read state (sent → delivered → read).
+model MessageReceipt {
+  id          String    @id @default(cuid())
+  messageId   String
+  userId      String
+  deliveredAt DateTime?
+  readAt      DateTime?
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+}
+
+// ─────────────────────────── Mail (email system) ─────────────────────────────
+
+/// A mail conversation owned by one account. Participants are email addresses;
+/// convoParticipantId is set when a participant is a Convo email identity.
+model EmailThread {
+  id           String   @id @default(cuid())
+  ownerId      String
+  subject      String?  @db.VarChar(998)
+  /// Stable thread key derived from the first Message-ID / References chain.
+  threadKey    String
+  lastActivityAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  participants EmailThreadParticipant[]
+  messages     EmailMessage[]
+
+  @@unique([ownerId, threadKey])
+  @@index([ownerId, lastActivityAt])
+}
+
+model EmailThreadParticipant {
+  id             String  @id @default(cuid())
+  threadId       String
+  address        String  @db.VarChar(320)
+  displayName    String? @db.VarChar(128)
+  convoUserId    String? // resolved Convo account, if any
+  isExternal     Boolean @default(true)
+
+  thread EmailThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, address])
+}
+
+/// One email in a thread, as seen by the owning account. Preserves real email
+/// semantics: Message-ID, In-Reply-To, References (spec §15).
+model EmailMessage {
+  id            String   @id @default(cuid())
+  threadId      String
+  ownerId       String
+  direction     EmailDirection
+  status        EmailStatus @default(QUEUED)
+  /// RFC 5322 Message-ID (<...>), unique per owner for inbound dedup.
+  internetMessageId String? @db.VarChar(998)
+  inReplyTo     String?  @db.VarChar(998)
+  references    String[] @default([])
+  fromAddress   String   @db.VarChar(320)
+  subject       String?  @db.VarChar(998)
+  bodyText      String?  @db.Text
+  bodyHtml      String?  @db.Text
+  /// Set when routed Convo-internal (spec §11) — mirrors the realtime message.
+  convoMessageId String?
+  providerMessageId String? @db.VarChar(255)
+  /// Client idempotency key for sends (spec §22).
+  clientSendId  String?
+  sentAt        DateTime?
+  receivedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  thread    EmailThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  owner     User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  recipients EmailRecipient[]
+  deliveryEvents EmailDeliveryEvent[]
+  attachments Attachment[]
+
+  @@unique([ownerId, internetMessageId])
+  @@unique([ownerId, clientSendId])
+  @@index([threadId, createdAt])
+}
+
+enum EmailDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum EmailStatus {
+  QUEUED
+  SENDING
+  SENT
+  DELIVERED
+  BOUNCED
+  FAILED
+}
+
+model EmailRecipient {
+  id             String   @id @default(cuid())
+  emailMessageId String
+  address        String   @db.VarChar(320)
+  recipientType  RecipientType @default(TO)
+  /// Routing decision (spec §16): Convo-internal or external SMTP.
+  route          MailRoute @default(EXTERNAL_SMTP)
+  status         EmailStatus @default(QUEUED)
+
+  emailMessage EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+
+  @@index([address])
+}
+
+enum RecipientType {
+  TO
+  CC
+  BCC
+}
+
+enum MailRoute {
+  CONVO_INTERNAL
+  EXTERNAL_SMTP
+}
+
+model EmailDeliveryEvent {
+  id             String   @id @default(cuid())
+  emailMessageId String
+  event          String   @db.VarChar(64) // sent, delivered, bounce, complaint…
+  provider       String   @db.VarChar(64)
+  payload        Json?
+  createdAt      DateTime @default(now())
+
+  emailMessage EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+
+  @@index([emailMessageId, createdAt])
+}
+
+/// Daily per-user external send counter for abuse prevention (spec §30).
+model EmailSendUsage {
+  id     String @id @default(cuid())
+  userId String
+  day    DateTime @db.Date
+  count  Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+}
+
+// ─────────────────────────── Notifications, moderation, audit ────────────────
+
+model Notification {
+  id             String   @id @default(cuid())
+  userId         String
+  type           NotificationType
+  conversationId String?
+  title          String   @db.VarChar(255)
+  body           String?  @db.VarChar(512)
+  data           Json?
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt, readAt])
+}
+
+enum NotificationType {
+  CHAT_MESSAGE
+  MAIL_MESSAGE
+  SYSTEM
+}
+
+model BlockedUser {
+  id            String   @id @default(cuid())
+  userId        String   // the blocker
+  blockedUserId String   // the blocked account
+  createdAt     DateTime @default(now())
+
+  user    User @relation("Blocker", fields: [userId], references: [id], onDelete: Cascade)
+  blocked User @relation("Blocked", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, blockedUserId])
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  reporterId   String
+  targetType   ReportTargetType
+  targetId     String
+  reason       String   @db.VarChar(64)
+  details      String?  @db.Text
+  status       ReportStatus @default(OPEN)
+  createdAt    DateTime @default(now())
+
+  reporter User @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
+
+enum ReportTargetType {
+  USER
+  MESSAGE
+  CONVERSATION
+  EMAIL
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+/// Audit trail for sensitive operations (spec §29).
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   @db.VarChar(128) // e.g. identity.connect.email, auth.login
+  metadata  Json?
+  ip        String?  @db.VarChar(45)
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
+  @@index([userId, createdAt])
+}

@@ -1,0 +1,30 @@
+# Local infrastructure for Convo development.
+# Optional if you use a cloud Postgres — Mailpit is still recommended for
+# local email testing (SMTP + inbox UI + API for inbound testing).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: convo
+      POSTGRES_PASSWORD: convo
+      POSTGRES_DB: convo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U convo"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025" # SMTP (API sends through here)
+      - "8025:8025" # Web inbox UI
+    environment:
+      MP_MAX_MESSAGES: 5000
+
+volumes:
+  postgres-data:

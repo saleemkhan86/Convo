@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Convo",
+    "slug": "convo",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "convo",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.convo.app"
+    },
+    "android": {
+      "package": "com.convo.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0E17",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["CAMERA", "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "POST_NOTIFICATIONS"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": ["expo-secure-store"]
+  }
+}
