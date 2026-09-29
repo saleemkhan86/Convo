@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import type { Account, ConversationSummary } from "@convo/shared";
+import type { Account, ConversationSummary, MailThreadSummary } from "@convo/shared";
 import { Button, CardBox, Heading, LogoMark, Muted, Screen, usePalette } from "../components/ui";
 import { ChatsScreen } from "./ChatsScreen";
+import { MailScreen } from "./MailScreen";
 import { colors, radius, spacing } from "../theme";
 
 type Section = "chats" | "mail";
@@ -12,11 +13,13 @@ export function HomeScreen({
   onOpenSettings,
   onConnect,
   onOpenChat,
+  onOpenThread,
 }: {
   account: Account;
   onOpenSettings: () => void;
   onConnect: (channel: "email" | "phone") => void;
   onOpenChat: (conversation: ConversationSummary) => void;
+  onOpenThread: (thread: MailThreadSummary) => void;
 }) {
   const palette = usePalette();
   const [section, setSection] = useState<Section>("chats");
@@ -62,35 +65,28 @@ export function HomeScreen({
         <View style={{ flex: 1, paddingTop: spacing.md }}>
           <ChatsScreen onOpenChat={onOpenChat} />
         </View>
+      ) : available && section === "mail" ? (
+        <View style={{ flex: 1, paddingTop: spacing.md }}>
+          <MailScreen account={account} onOpenThread={onOpenThread} />
+        </View>
       ) : (
         <View style={{ flex: 1, padding: spacing.lg }}>
-          {available ? (
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm }}>
-              <Heading palette={palette}>No mail yet</Heading>
-              <View style={{ maxWidth: 300, alignItems: "center" }}>
-                <Muted palette={palette}>
-                  Chat-style email for Convo users and any external address.
-                </Muted>
-              </View>
-            </View>
-          ) : (
-            <CardBox palette={palette}>
-              <Heading palette={palette}>
-                {section === "chats"
-                  ? "Connect a phone number to start using Chats"
-                  : "Connect an email address to start using Mail"}
-              </Heading>
-              <Muted palette={palette}>
-                {section === "chats"
-                  ? "Add your phone identity to this account to unlock instant messaging."
-                  : "Add your email identity to this account to send and receive email, chat-style."}
-              </Muted>
-              <Button
-                label={section === "chats" ? "Connect Phone Number" : "Connect Email"}
-                onPress={() => onConnect(section === "chats" ? "phone" : "email")}
-              />
-            </CardBox>
-          )}
+          <CardBox palette={palette}>
+            <Heading palette={palette}>
+              {section === "chats"
+                ? "Connect a phone number to start using Chats"
+                : "Connect an email address to start using Mail"}
+            </Heading>
+            <Muted palette={palette}>
+              {section === "chats"
+                ? "Add your phone identity to this account to unlock instant messaging."
+                : "Add your email identity to this account to send and receive email, chat-style."}
+            </Muted>
+            <Button
+              label={section === "chats" ? "Connect Phone Number" : "Connect Email"}
+              onPress={() => onConnect(section === "chats" ? "phone" : "email")}
+            />
+          </CardBox>
         </View>
       )}
     </Screen>

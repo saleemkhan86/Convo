@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, View, useColorScheme } from "react-native";
-import type { Account, AuthResult, ConversationSummary } from "@convo/shared";
+import type { Account, AuthResult, ConversationSummary, MailThreadSummary } from "@convo/shared";
 import { api, hydrateSession } from "./src/api";
 import { connectRealtime, disconnectRealtime } from "./src/realtime";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { ChatRoomScreen } from "./src/screens/ChatRoomScreen";
 import { ConnectIdentityScreen } from "./src/screens/ConnectIdentityScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
+import { MailThreadScreen } from "./src/screens/MailThreadScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { WelcomeScreen, type AuthChannel } from "./src/screens/WelcomeScreen";
 import { darkPalette, lightPalette } from "./src/theme";
@@ -18,6 +19,7 @@ type Route =
   | { name: "home" }
   | { name: "settings" }
   | { name: "chatRoom"; conversation: ConversationSummary }
+  | { name: "mailThread"; thread: MailThreadSummary }
   | { name: "connect"; channel: "email" | "phone" };
 
 export default function App() {
@@ -95,11 +97,19 @@ export default function App() {
           onOpenSettings={() => setRoute({ name: "settings" })}
           onConnect={(channel) => setRoute({ name: "connect", channel })}
           onOpenChat={(conversation) => setRoute({ name: "chatRoom", conversation })}
+          onOpenThread={(thread) => setRoute({ name: "mailThread", thread })}
         />
       )}
       {route.name === "chatRoom" && account && (
         <ChatRoomScreen
           conversation={route.conversation}
+          account={account}
+          onBack={() => setRoute({ name: "home" })}
+        />
+      )}
+      {route.name === "mailThread" && account && (
+        <MailThreadScreen
+          thread={route.thread}
           account={account}
           onBack={() => setRoute({ name: "home" })}
         />

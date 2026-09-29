@@ -2,10 +2,15 @@ import type {
   Account,
   AuthResult,
   Challenge,
+  ComposeMailRequest,
   ConversationList,
   ConversationSummary,
+  MailMessagePage,
+  MailThreadList,
   Message,
   MessagePage,
+  ReplyMailRequest,
+  SendMailResult,
   SessionTokens,
   UpdateProfileRequest,
 } from "@convo/shared";
@@ -151,6 +156,17 @@ export const api = {
     request<Message>(`/conversations/${conversationId}/messages`, { method: "POST", body, auth: true }),
   markRead: (conversationId: string, messageId?: string) =>
     request<{ ok: true }>(`/conversations/${conversationId}/read`, { method: "POST", body: { messageId }, auth: true }),
+
+  listMailThreads: (cursor?: string, limit = 50) =>
+    request<MailThreadList>(`/mail/threads${query({ cursor, limit })}`, { auth: true }),
+  listMailMessages: (threadId: string, cursor?: string, limit = 50) =>
+    request<MailMessagePage>(`/mail/threads/${threadId}/messages${query({ cursor, limit })}`, { auth: true }),
+  composeMail: (body: ComposeMailRequest) =>
+    request<SendMailResult>("/mail/send", { method: "POST", body, auth: true }),
+  replyMail: (threadId: string, body: ReplyMailRequest) =>
+    request<SendMailResult>(`/mail/threads/${threadId}/reply`, { method: "POST", body, auth: true }),
+  markThreadRead: (threadId: string) =>
+    request<{ ok: true }>(`/mail/threads/${threadId}/read`, { method: "POST", body: {}, auth: true }),
 };
 
 function query(params: Record<string, string | number | undefined>): string {

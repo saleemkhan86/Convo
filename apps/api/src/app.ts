@@ -10,6 +10,7 @@ import { authRoutes } from "./routes/auth.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { healthRoutes } from "./routes/health.js";
 import { identityRoutes } from "./routes/identities.js";
+import { mailRoutes } from "./routes/mail.js";
 import { meRoutes } from "./routes/me.js";
 import { wsRoutes } from "./routes/ws.js";
 
@@ -85,6 +86,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(identityRoutes, deps);
   await app.register(meRoutes, deps);
   await app.register(conversationRoutes, deps);
+  await app.register(mailRoutes, deps);
   await app.register(wsRoutes, deps);
 
   return app;

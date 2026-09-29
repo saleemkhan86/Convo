@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { e164PhoneSchema } from "./identity.js";
+import { mailNewEventSchema } from "./mail.js";
 
 /**
  * Chats contracts (spec §9, §22, §23).
@@ -143,5 +144,6 @@ export const wsServerEventSchema = z.discriminatedUnion("type", [
     userId: z.string(),
     online: z.boolean(),
   }),
+  mailNewEventSchema,
 ]);
 export type WsServerEvent = z.infer<typeof wsServerEventSchema>;

@@ -325,6 +325,8 @@ model EmailThread {
   /// Stable thread key derived from the first Message-ID / References chain.
   threadKey    String
   lastActivityAt DateTime @default(now())
+  /// Owner-scoped read watermark; inbound messages after this are unread.
+  lastReadAt   DateTime?
   createdAt    DateTime @default(now())
 
   owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)

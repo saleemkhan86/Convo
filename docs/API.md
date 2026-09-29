@@ -1,4 +1,4 @@
-# Convo API Reference (v0.2 — Phase 2: Chats)
+# Convo API Reference (v0.3 — Phase 3: Mail)
 
 Base URL: `http://localhost:4000` (web dev proxy: `/api`).
 
@@ -184,13 +184,92 @@ Server → client:
 | `message.read` | `{ conversationId, userId, readAt }` |
 | `typing` | `{ conversationId, userId, isTyping }` |
 | `presence` | `{ userId, online }` — emitted on online-state transitions for watched users. |
+| `mail.new` | `{ thread, message }` — a new mail landed in the recipient's own mailbox (see Mail below). |
 
 Scaling note: the hub is a single-process `InMemoryHub`. The `RealtimeHub`
 interface is the seam where a Redis pub/sub adapter drops in for multi-instance
 deployments.
 
+## Mail (Phase 3, spec §10/§11/§15/§17/§18)
+
+Requires a valid access token **and** a connected email identity
+(`capabilities.mail`). Requests from an account without an email identity return
+403 with "Connect an email address to start using Mail".
+
+Mail uses **real email semantics**: every account owns its own copy of a thread
+and its messages. A conversation between two Convo users is two `EmailThread`
+rows (one per owner), tied together by a shared `threadKey` and by RFC 5322
+headers (`internetMessageId`, `inReplyTo`, `references`). Sending a message to a
+Convo user mirrors an `INBOUND` copy into their mailbox and pushes `mail.new`
+over their socket; the sender keeps an `OUTBOUND` copy. As with Chats, sends go
+over HTTP and are made **idempotent** by a client-generated `clientSendId`
+(UUID), so a retry returns the original instead of duplicating.
+
+External (non-Convo) addresses are accepted and stored as `QUEUED`
+(`route: EXTERNAL_SMTP`) for the Phase 4 gateway to drain. The composer **never**
+learns whether a recipient was routed internally or externally — the request
+shape is identical for both, which avoids a user-enumeration oracle.
+
+### Objects
+
+```jsonc
+// MailParticipant
+{ "address": "alice@example.com", "displayName": "Alice", "convoUserId": "clx...", "isExternal": false }
+
+// MailMessage
+{
+  "id": "clx...", "threadId": "clx...", "direction": "INBOUND", "status": "DELIVERED",
+  "fromAddress": "alice@example.com", "toAddresses": ["bob@example.com"],
+  "subject": "Hello", "bodyText": "Hi",
+  "internetMessageId": "<uuid@convo.local>", "inReplyTo": null, "references": [],
+  "convoMessageId": "clx...", "createdAt": "…", "sentAt": "…", "receivedAt": "…"
+}
+
+// MailThreadSummary
+{
+  "id": "clx...", "subject": "Hello",
+  "participants": [ /* MailParticipant */ ], "lastMessage": { /* MailMessage */ },
+  "unreadCount": 1, "lastActivityAt": "…", "lastReadAt": null
+}
+```
+
+`direction` is `INBOUND` | `OUTBOUND`. `status` is `QUEUED` | `SENDING` | `SENT` |
+`DELIVERED` | `BOUNCED` | `FAILED`. `subject`/`bodyText`/timestamps may be null.
+
+### REST endpoints
+
+| Method | Path | Body / Query | Returns |
+|---|---|---|---|
+| GET | `/mail/threads` | `?cursor?&limit=50` (1–100) | `{ threads: [...], nextCursor }` |
+| GET | `/mail/threads/:id/messages` | `?cursor?&limit=50` | `{ messages: [...], nextCursor }` (oldest-first page) |
+| POST | `/mail/send` | `{ clientSendId, to: string[], subject?, body }` | `{ thread, message }` |
+| POST | `/mail/threads/:id/reply` | `{ clientSendId, body }` | `{ thread, message }` |
+| POST | `/mail/threads/:id/read` | `{}` | `{ ok: true }` |
+
+Semantics:
+- `:id` is the caller's **own** thread id; accessing a thread you don't own returns
+  a generic 404 (no enumeration). All reads/writes are owner-scoped.
+- `to` is 1–25 addresses; `body` is trimmed, 1–65536 chars; `subject` is optional,
+  trimmed, ≤998 chars. `clientSendId` must be a UUID and is unique per owner.
+- `send` resolves and dedupes recipients (lowercased, self excluded); if the only
+  address is yourself it returns 400 "Choose at least one recipient other than
+  yourself".
+- `reply` threads off the most recent message carrying a Message-ID: it sets
+  `inReplyTo` to that `internetMessageId` and appends it to `references`, and
+  reifies the subject to `Re: …` (idempotent — an existing `Re:` prefix is kept).
+- `read` sets the thread's `lastReadAt` watermark; `unreadCount` counts `INBOUND`
+  messages received after it.
+- Rate limits: `send` 30/min, `reply` 60/min.
+
+### Realtime delivery
+
+Each recipient receives `{ type: "mail.new", thread, message }` on their socket,
+where `thread` and `message` are that recipient's **own** copies (their thread id
+differs from the sender's). Fan-out is per-recipient, so a send to several Convo
+users publishes one event per online recipient.
+
 ## Planned (later phases)
 
-Mail threads + composer endpoints (Phase 3), external email gateway
-webhooks/queue (Phase 4), attachments, search, contacts, groups (Phase 5).
+External email gateway — SMTP send + IMAP/webhook ingest draining the `QUEUED`
+recipients (Phase 4), attachments, search, contacts, groups (Phase 5).
 Contracts live in `packages/shared` as they ship.

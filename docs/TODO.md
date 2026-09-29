@@ -1,8 +1,9 @@
 # Convo — Deferred Features (TODO)
 
-Tracked against the MVP phasing in spec §35. Phases 1–2 core (architecture,
-database, auth, identity model, profile, realtime 1-1 Chats on web + mobile) are
-implemented; everything below is deferred by design, not forgotten.
+Tracked against the MVP phasing in spec §35. Phases 1–3 core (architecture,
+database, auth, identity model, profile, realtime 1-1 Chats and Convo-to-Convo
+Mail on web + mobile) are implemented; everything below is deferred by design,
+not forgotten.
 
 ## Phase 2 — Phone Chats
 - [x] WebSocket gateway (`@fastify/websocket`), downstream fan-out via `RealtimeHub`
@@ -24,10 +25,23 @@ implemented; everything below is deferred by design, not forgotten.
       adapter behind the existing interface)
 
 ## Phase 3 — Mail (Convo-to-Convo)
-- [ ] Mail thread list + conversation timeline UI (chat-style, spec §10, §17)
-- [ ] Mail composer with collapsible subject (spec §18)
-- [ ] Internal routing: `resolveMailRoute` → realtime delivery for Convo
-      email identities, mirrored into `email_messages` with threading headers
+- [x] Per-owner mailbox model: `EmailThread`/`EmailMessage` carry `ownerId`,
+      tied across mailboxes by a shared `threadKey`
+- [x] Internal routing: `resolveMailRoute` → mirrored `INBOUND` copies with RFC
+      5322 threading headers (`internetMessageId`/`inReplyTo`/`references`),
+      realtime `mail.new` fan-out per recipient
+- [x] Idempotent send (`clientSendId` UUID unique per owner) + reply threading
+      with `Re:` subject reification
+- [x] External recipients accepted and stored `QUEUED` (`EXTERNAL_SMTP`) for the
+      Phase 4 gateway; route is never exposed to the client (anti-enumeration)
+- [x] Shared contracts (`packages/shared/src/mail.ts`) + `mail.new` WS event
+- [x] REST API: `GET /mail/threads`, `GET /mail/threads/:id/messages`,
+      `POST /mail/send`, `POST /mail/threads/:id/reply`, `POST /mail/threads/:id/read`
+- [x] Web Mail UI: thread list + chat-style timeline + collapsible-subject composer
+- [x] Mobile Mail screens: thread list, composer, and reply timeline (Expo)
+- [x] Owner-scoped unread watermark (`lastReadAt`) + unread counts
+- [ ] External SMTP/IMAP delivery + inbound parsing — **Phase 4**
+- [ ] Mail attachments, labels/folders, search — Phase 5
 
 ## Phase 4 — External email gateway
 - [ ] `SmtpProvider.parseEmail` — RFC 822 parsing (mailparser) for inbound

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ChatsSection } from "../components/ChatsSection";
+import { MailSection } from "../components/MailSection";
 import { ChatIcon, ContactsIcon, MailIcon, PhoneIcon, PlusIcon, SearchIcon, SettingsIcon } from "../components/icons";
 import { Badge, Button, Logo, cx } from "../components/ui";
 import { useAuth } from "../lib/auth";
@@ -11,6 +12,7 @@ export function HomePage() {
   const { account } = useAuth();
   const [section, setSection] = useState<Section>("chats");
   const [newChatNonce, setNewChatNonce] = useState(0);
+  const [newMailNonce, setNewMailNonce] = useState(0);
 
   if (!account) return null;
   const chatsAvailable = account.capabilities.chats;
@@ -78,6 +80,7 @@ export function HomePage() {
               title={activeAvailable ? "New" : "Connect an identity first"}
               onClick={() => {
                 if (section === "chats") setNewChatNonce((n) => n + 1);
+                else setNewMailNonce((n) => n + 1);
               }}
             >
               <PlusIcon className="h-4 w-4" />
@@ -92,9 +95,7 @@ export function HomePage() {
           ) : section === "chats" ? (
             <ChatsSection newChatNonce={newChatNonce} />
           ) : (
-            <div className="h-full overflow-y-auto">
-              <EmptyConversations section="mail" />
-            </div>
+            <MailSection newMailNonce={newMailNonce} />
           )}
         </div>
 
@@ -243,26 +244,6 @@ function ConnectIdentityPrompt({ section }: { section: Section }) {
             {isChats ? "Connect Phone Number" : "Connect Email"}
           </Button>
         </Link>
-      </div>
-    </div>
-  );
-}
-
-function EmptyConversations({ section }: { section: Section }) {
-  return (
-    <div className="flex h-full items-center justify-center p-6">
-      <div className="max-w-sm text-center">
-        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-ink-100 text-ink-400 dark:bg-night-raised">
-          {section === "chats" ? <ChatIcon className="h-6 w-6" /> : <MailIcon className="h-6 w-6" />}
-        </span>
-        <h2 className="mt-4 text-lg font-bold text-ink-900 dark:text-white">
-          {section === "chats" ? "No conversations yet" : "No mail yet"}
-        </h2>
-        <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
-          {section === "chats"
-            ? "Start a new chat with a contact — real-time messaging arrives in Phase 2."
-            : "Compose a new mail to anyone — Convo users or external addresses."}
-        </p>
       </div>
     </div>
   );
