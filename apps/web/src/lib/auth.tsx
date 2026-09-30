@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Account, AuthResult } from "@convo/shared";
+import type { Account, SessionAuthResult } from "@convo/shared";
 import { api, clearSession, loadSession, saveSession } from "../lib/api";
 
 type AuthStatus = "loading" | "signed-out" | "signed-in";
@@ -16,7 +16,8 @@ interface AuthContextValue {
   status: AuthStatus;
   account: Account | null;
   setAccount: (account: Account) => void;
-  signIn: (result: AuthResult) => void;
+  /** Only the session branch lands here; a PIN wall stays in the login form. */
+  signIn: (result: SessionAuthResult) => void;
   signOut: () => Promise<void>;
   reloadAccount: () => Promise<void>;
 }
@@ -56,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("signed-in");
   }, []);
 
-  const signIn = useCallback((result: AuthResult) => {
+  const signIn = useCallback((result: SessionAuthResult) => {
     saveSession(result.session);
     setAccountState(result.account);
     setStatus("signed-in");

@@ -27,9 +27,11 @@ export function OtpFlow({
 }: OtpFlowProps) {
   const navigate = useNavigate();
   const { signIn } = useAuth();
-  const [step, setStep] = useState<"target" | "otp">("target");
+  const [step, setStep] = useState<"target" | "otp" | "pin">("target");
   const [target, setTarget] = useState("");
   const [challenge, setChallenge] = useState<Challenge | null>(null);
+  /** Set when the account has two-step verification; exchanged for a session by PIN. */
+  const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,14 +57,36 @@ export function OtpFlow({
     }
   };
 
+  /** Either a session (sign in) or the PIN wall (5C two-step verification). */
+  const complete = (result: AuthResult) => {
+    if ("session" in result) {
+      signIn(result);
+      navigate("/", { replace: true });
+      return;
+    }
+    setTwoFactorToken(result.twoFactorToken);
+    setStep("pin");
+  };
+
   const handleVerify = async (code: string) => {
     if (!challenge) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await verifyOtp(challenge.challengeId, code);
-      signIn(result);
-      navigate("/", { replace: true });
+      complete(await verifyOtp(challenge.challengeId, code));
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handlePin = async (pin: string) => {
+    if (!twoFactorToken) return;
+    setBusy(true);
+    setError(null);
+    try {
+      complete(await api.verifyTwoFactor(twoFactorToken, pin));
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -93,7 +117,7 @@ export function OtpFlow({
         </div>
 
         <Card>
-          {step === "target" ? (
+          {step === "target" && (
             <div className="space-y-5">
               <div>
                 <h1 className="text-xl font-bold tracking-tight text-ink-900 dark:text-white">{title}</h1>
@@ -113,7 +137,8 @@ export function OtpFlow({
                 Send verification code
               </Button>
             </div>
-          ) : (
+          )}
+          {step === "otp" && (
             <div className="space-y-5">
               <div>
                 <h1 className="text-xl font-bold tracking-tight text-ink-900 dark:text-white">Enter your code</h1>
@@ -135,6 +160,26 @@ export function OtpFlow({
                 <span className="text-ink-300">•</span>
                 <button onClick={() => { setStep("target"); setError(null); }} className="font-medium text-ink-500 hover:text-ink-700 dark:text-ink-400">
                   Change {targetLabel.toLowerCase()}
+                </button>
+              </div>
+            </div>
+          )}
+          {step === "pin" && (
+            <div className="space-y-5">
+              <div>
+                <h1 className="text-xl font-bold tracking-tight text-ink-900 dark:text-white">Enter your PIN</h1>
+                <p className="mt-1.5 text-sm text-ink-500 dark:text-ink-400">
+                  Two-step verification is on for this account.
+                </p>
+              </div>
+              <OtpInput disabled={busy} onComplete={(pin) => void handlePin(pin)} />
+              {error && <p className="text-center text-sm text-red-600 dark:text-red-400">{error}</p>}
+              <div className="flex items-center justify-center text-sm">
+                <button
+                  onClick={() => { setStep("otp"); setError(null); setTwoFactorToken(null); }}
+                  className="font-medium text-ink-500 hover:text-ink-700 dark:text-ink-400"
+                >
+                  Back to the code
                 </button>
               </div>
             </div>

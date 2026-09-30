@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import type { Account, ConversationSummary, MailThreadSummary } from "@convo/shared";
+import { useCallState } from "../calls";
 import { Button, CardBox, Heading, LogoMark, Muted, Screen, usePalette } from "../components/ui";
+import { CallsScreen } from "./CallsScreen";
 import { ChatsScreen } from "./ChatsScreen";
 import { MailScreen } from "./MailScreen";
+import { StatusScreen } from "./StatusScreen";
 import { colors, radius, spacing } from "../theme";
 
-type Section = "chats" | "mail";
+type Section = "chats" | "mail" | "status" | "calls";
+
+const LABELS: Record<Section, string> = { chats: "Chats", mail: "Mail", status: "Status", calls: "Calls" };
 
 export function HomeScreen({
   account,
@@ -14,16 +19,31 @@ export function HomeScreen({
   onConnect,
   onOpenChat,
   onOpenThread,
+  onOpenGroups,
+  onOpenContacts,
+  onOpenStarred,
+  onOpenSearch,
+  onOpenUser,
 }: {
   account: Account;
   onOpenSettings: () => void;
   onConnect: (channel: "email" | "phone") => void;
   onOpenChat: (conversation: ConversationSummary) => void;
   onOpenThread: (thread: MailThreadSummary) => void;
+  onOpenGroups: () => void;
+  onOpenContacts: () => void;
+  onOpenStarred: () => void;
+  onOpenSearch: () => void;
+  onOpenUser: (userId: string) => void;
 }) {
   const palette = usePalette();
   const [section, setSection] = useState<Section>("chats");
-  const available = section === "chats" ? account.capabilities.chats : account.capabilities.mail;
+  const callSupported = useCallState().supported;
+  const isStatus = section === "status";
+  const isCalls = section === "calls";
+  const needsEmail = section === "mail";
+  const available =
+    isStatus || (section === "mail" ? account.capabilities.mail : account.capabilities.chats);
 
   return (
     <Screen palette={palette}>
@@ -39,7 +59,7 @@ export function HomeScreen({
 
       {/* Section switcher */}
       <View style={{ flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg }}>
-        {(["chats", "mail"] as Section[]).map((s) => (
+        {(["chats", "mail", "status", "calls"] as Section[]).map((s) => (
           <Pressable
             key={s}
             onPress={() => setSection(s)}
@@ -54,16 +74,31 @@ export function HomeScreen({
             }}
           >
             <Text style={{ fontWeight: "700", fontSize: 14, color: section === s ? colors.white : palette.text }}>
-              {s === "chats" ? "Chats" : "Mail"}
+              {LABELS[s]}
             </Text>
           </Pressable>
         ))}
       </View>
 
       {/* Body */}
-      {available && section === "chats" ? (
+      {isStatus ? (
         <View style={{ flex: 1, paddingTop: spacing.md }}>
-          <ChatsScreen onOpenChat={onOpenChat} />
+          <StatusScreen accountId={account.id} />
+        </View>
+      ) : isCalls && available ? (
+        <View style={{ flex: 1, paddingTop: spacing.md }}>
+          <CallsScreen callSupported={callSupported} />
+        </View>
+      ) : available && section === "chats" ? (
+        <View style={{ flex: 1, paddingTop: spacing.md }}>
+          <ChatsScreen
+            onOpenChat={onOpenChat}
+            onOpenGroups={onOpenGroups}
+            onOpenContacts={onOpenContacts}
+            onOpenStarred={onOpenStarred}
+            onOpenSearch={onOpenSearch}
+            onOpenUser={onOpenUser}
+          />
         </View>
       ) : available && section === "mail" ? (
         <View style={{ flex: 1, paddingTop: spacing.md }}>
@@ -73,18 +108,18 @@ export function HomeScreen({
         <View style={{ flex: 1, padding: spacing.lg }}>
           <CardBox palette={palette}>
             <Heading palette={palette}>
-              {section === "chats"
-                ? "Connect a phone number to start using Chats"
-                : "Connect an email address to start using Mail"}
+              {needsEmail
+                ? "Connect an email address to start using Mail"
+                : "Connect a phone number to start using Chats"}
             </Heading>
             <Muted palette={palette}>
-              {section === "chats"
-                ? "Add your phone identity to this account to unlock instant messaging."
-                : "Add your email identity to this account to send and receive email, chat-style."}
+              {needsEmail
+                ? "Add your email identity to this account to send and receive email, chat-style."
+                : "Add your phone identity to this account to unlock instant messaging and calls."}
             </Muted>
             <Button
-              label={section === "chats" ? "Connect Phone Number" : "Connect Email"}
-              onPress={() => onConnect(section === "chats" ? "phone" : "email")}
+              label={needsEmail ? "Connect Email" : "Connect Phone Number"}
+              onPress={() => onConnect(needsEmail ? "email" : "phone")}
             />
           </CardBox>
         </View>

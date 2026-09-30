@@ -20,6 +20,7 @@ import type {
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
 import { resolveMailRoute } from "./mailRouting.js";
 import type { RealtimeHub } from "./realtime.js";
+import type { NotificationItem } from "@convo/shared";
 
 /**
  * Mail domain (spec §10, §11, §15, §17, §18): chat-style mail with real email
@@ -36,6 +37,15 @@ import type { RealtimeHub } from "./realtime.js";
 export interface MailDeps {
   db: PrismaClient;
   hub: RealtimeHub;
+  /** Phase 5G: notify each internal recipient about a new mail message. */
+  notifyRecipient?: (
+    userId: string,
+    title: string,
+    body: string | null,
+    actorId: string | null,
+    conversationId: string,
+    messageId: string,
+  ) => Promise<NotificationItem | null>;
 }
 
 const MAIL_DOMAIN = "convo.local";
@@ -268,10 +278,11 @@ function participantsFor(
 // ────────────────────────────── compose ──────────────────────────────
 
 export async function composeMail(
-  { db, hub }: MailDeps,
+  deps: MailDeps,
   userId: string,
   input: ComposeMailRequest,
 ): Promise<SendMailResult> {
+  const { db, hub } = deps;
   const sender = await requireMail(db, userId);
 
   // Idempotency (spec §22): a retried clientSendId returns the original.
@@ -351,7 +362,7 @@ export async function composeMail(
   });
   const thread = await loadThreadSummary(db, userId, message.threadId);
 
-  await fanOutNewMail(db, hub, threadKey, recipients);
+  await fanOutNewMail(db, hub, threadKey, recipients, deps.notifyRecipient);
 
   return { thread, message: serializeMessage(message) };
 }
@@ -359,11 +370,12 @@ export async function composeMail(
 // ────────────────────────────── reply ──────────────────────────────
 
 export async function replyToThread(
-  { db, hub }: MailDeps,
+  deps: MailDeps,
   userId: string,
   threadId: string,
   input: ReplyMailRequest,
 ): Promise<SendMailResult> {
+  const { db, hub } = deps;
   const sender = await requireMail(db, userId);
 
   const own = await db.emailThread.findFirst({
@@ -464,7 +476,7 @@ export async function replyToThread(
   });
   const thread = await loadThreadSummary(db, userId, own.id);
 
-  await fanOutNewMail(db, hub, own.threadKey, recipients);
+  await fanOutNewMail(db, hub, own.threadKey, recipients, deps.notifyRecipient);
 
   return { thread, message: serializeMessage(message) };
 }
@@ -561,6 +573,7 @@ async function fanOutNewMail(
   hub: RealtimeHub,
   threadKey: string,
   recipients: ResolvedRecipient[],
+  notifyRecipient?: MailDeps["notifyRecipient"],
 ): Promise<void> {
   for (const r of recipients) {
     if (!r.internal || !r.convoUserId) continue;
@@ -581,6 +594,11 @@ async function fanOutNewMail(
         thread,
         message: serializeMessage(lastInbound),
       });
+      // Phase 5G: bell + push for new mail.
+      if (notifyRecipient) {
+        const title = thread.subject || "New email";
+        void notifyRecipient(r.convoUserId!, title, lastInbound.bodyText?.slice(0, 200) ?? null, null, their.id, lastInbound.id).catch(() => {});
+      }
     } catch {
       // A recipient's mailbox failing to serialize must not break the send.
     }

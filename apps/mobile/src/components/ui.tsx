@@ -17,6 +17,49 @@ export function Screen({ children, palette }: { children: ReactNode; palette: Pa
   return <View style={{ flex: 1, backgroundColor: palette.bg, paddingTop: spacing.xl }}>{children}</View>;
 }
 
+/** Top bar used by the full-screen Phase 5A screens (contacts, starred, search…). */
+export function ScreenHeader({
+  title,
+  subtitle,
+  onBack,
+  palette,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack: () => void;
+  palette: Palette;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        paddingHorizontal: spacing.lg,
+        paddingTop: spacing.xl,
+        paddingBottom: spacing.md,
+        backgroundColor: palette.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: palette.border,
+      }}
+    >
+      <Pressable onPress={onBack} hitSlop={8}>
+        <Text style={{ fontSize: 22, color: palette.textMuted }}>‹</Text>
+      </Pressable>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ fontSize: 16, fontWeight: "800", color: palette.text }}>
+          {title}
+        </Text>
+        {subtitle && (
+          <Text numberOfLines={1} style={{ fontSize: 12, color: palette.textFaint }}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
 export function Button({
   label,
   onPress,
@@ -70,15 +113,17 @@ export function TextField({
   error,
   autoFocus,
   palette,
+  secureTextEntry,
 }: {
   label?: string;
   value: string;
   onChangeText: (v: string) => void;
   placeholder?: string;
-  keyboardType?: "default" | "email-address" | "phone-pad" | "number-pad";
+  keyboardType?: "default" | "email-address" | "phone-pad" | "number-pad" | "url";
   error?: string | null;
   autoFocus?: boolean;
   palette: Palette;
+  secureTextEntry?: boolean;
 }) {
   return (
     <View style={{ gap: 6 }}>
@@ -92,6 +137,7 @@ export function TextField({
         placeholderTextColor={palette.textFaint}
         keyboardType={keyboardType ?? "default"}
         autoFocus={autoFocus}
+        secureTextEntry={secureTextEntry}
         autoCapitalize={keyboardType === "email-address" ? "none" : "sentences"}
         autoComplete={keyboardType === "email-address" ? "email" : undefined}
         style={{

@@ -20,6 +20,60 @@ model User {
   avatarUrl   String?  @db.VarChar(2048)
   bio         String?  @db.VarChar(280)
   status      UserStatus @default(ACTIVE)
+  /// Last time the account was seen online; gated by presenceVisibility.
+  lastSeenAt  DateTime?
+  presenceVisibility PresenceVisibility @default(EVERYONE)
+  /// Per-field privacy (5C). CONTACTS means "viewers the target has saved as a
+  /// contact" — the same rule last-seen already uses.
+  avatarVisibility   ProfileVisibility @default(EVERYONE)
+  aboutVisibility    ProfileVisibility @default(EVERYONE)
+  /// Live "online" dot audience; WhatsApp 2026 splits this from last seen.
+  onlineVisibility   ProfileVisibility @default(EVERYONE)
+  /// userIds hidden under the CONTACTS_EXCEPT mode (JSON array).
+  visibilityExcluded Json?
+  /// Who may add this account to a group (5C).
+  groupAddVisibility GroupAddVisibility @default(EVERYONE)
+  /// Two-way switch: when off, this account writes no read timestamps on other
+  /// people's messages (WhatsApp's read-receipts contract).
+  readReceiptsEnabled Boolean @default(true)
+  /// Chat-media auto-download rule (5B extras): ALWAYS fetches media on any
+  /// network, WIFI_ONLY defers cellular downloads until the user taps.
+  mediaAutoDownload MediaAutoDownload @default(ALWAYS)
+  /// Notification preview (5G): when off, a notification says "New message"
+  /// with no sender and no body. The badge still counts, because the count is
+  /// not secret content.
+  notifyPreview Boolean @default(true)
+  /// Quiet mode (5G): suppresses pushed notifications without muting the chat
+  /// list badge. Per-chat mute stays on `ConversationMember.notifyMode`.
+  notifyMuted Boolean @default(false)
+  /// Account-wide notification tone key (5G) — a client-side identifier; the
+  /// server stores and echoes it so the sound follows the user across devices.
+  notifySound String? @db.VarChar(64)
+  /// Quiet hours (5G): a scheduled version of `notifyMuted`. "HH:MM" read in
+  /// `notifyQuietTz` (an IANA zone), and the window may cross midnight. During
+  /// it, pushes are suppressed but the unread badge keeps counting.
+  notifyQuietStart String? @db.VarChar(5)
+  notifyQuietEnd   String? @db.VarChar(5)
+  notifyQuietTz    String? @db.VarChar(64)
+  /// Account-wide chat wallpaper (5G): a media key owned by this user, or a
+  /// `builtin:<id>` token. Per-chat values on the member row win.
+  wallpaperKey String? @db.VarChar(128)
+  /// Default disappearing timer for this account's new 1-1 chats, in seconds
+  /// (0 = off). Copied onto a conversation when one is first opened.
+  defaultEphemeralSeconds Int @default(0)
+  /// Client-device settings mirror (5C app lock: { appLock: {…} }). The server
+  /// stores but never interprets it; clients read it via GET /me.
+  clientSettings Json?
+  /// Two-step verification (5C): scrypt hash of the 6-digit PIN + salt. Both
+  /// null until the user sets a PIN.
+  twoFactorHash  String?
+  twoFactorSalt  String?
+  twoFactorUpdatedAt DateTime?
+  /// Soft-delete grace window (5C). Sign-in keeps working while set; the
+  /// account clears it by calling the cancel-deletion route. Past
+  /// ACCOUNT_DELETION_GRACE_DAYS the sweep anonymizes the account and hard
+  /// deletes the row.
+  deletionRequestedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -32,11 +86,28 @@ model User {
   contacts            Contact[]
   memberships         ConversationMember[]
   sentMessages        Message[]        @relation("MessageSender")
+  forwardedMessages   Message[]        @relation("MessageForwardedFrom")
   reactions           MessageReaction[]
   receipts            MessageReceipt[]
+  hiddenMessages      MessageHidden[]
+  starredMessages     StarredMessage[]
+  viewedOnce          ViewOnceView[]   @relation("ViewOnceViews")
+  mentions            MessageMention[]
+  pinnedMessages      MessagePin[]     @relation("MessagePinner")
+  callsPlaced         Call[]              @relation("CallCaller")
+  callParticipations  CallParticipant[]
+  callEvents          CallEvent[]
+  mediaObjects        MediaObject[]
   emailThreads        EmailThread[]
   emailMessages       EmailMessage[]
-  notifications       Notification[]
+  statusesPosted      Status[]              @relation("StatusAuthor")
+  statusViews         StatusView[]
+  statusesMuted       StatusMute[]          @relation("StatusMuter")
+  statusMutesOfMe     StatusMute[]          @relation("StatusMuted")
+  invitedMembers      ConversationMember[]  @relation("GroupInviter")
+  notifications       Notification[]         @relation("NotificationOwner")
+  actorNotifications  Notification[]         @relation("NotificationActor")
+  chatFolders         ChatFolder[]
   blocks              BlockedUser[]    @relation("Blocker")
   blockedBy           BlockedUser[]    @relation("Blocked")
   reportsFiled        Report[]         @relation("Reporter")
@@ -50,6 +121,34 @@ enum UserStatus {
   ACTIVE
   DEACTIVATED
   BANNED
+}
+
+/// Who may read this account's last-seen timestamp (spec §34 privacy).
+enum PresenceVisibility {
+  EVERYONE
+  CONTACTS
+  NONE
+}
+
+/// Per-field privacy audience (5C): everyone, only people the target saved as
+/// a contact (minus `visibilityExcluded`), or nobody.
+enum ProfileVisibility {
+  EVERYONE
+  CONTACTS
+  CONTACTS_EXCEPT
+  NONE
+}
+
+/// Who may add this account to a group (5C).
+enum GroupAddVisibility {
+  EVERYONE
+  CONTACTS
+  NOBODY
+}
+
+enum MediaAutoDownload {
+  ALWAYS
+  WIFI_ONLY
 }
 
 /// Phone identity: enables Chats. At most one per user (unique userId),
@@ -103,6 +202,7 @@ enum ChallengeChannel {
 enum ChallengePurpose {
   LOGIN
   CONNECT_IDENTITY
+  TWO_FACTOR
 }
 
 // ─────────────────────────── Sessions & devices ──────────────────────────────
@@ -128,7 +228,14 @@ model Device {
   id        String   @id @default(cuid())
   userId    String
   platform  DevicePlatform
+  /// Native push (FCM/APNs) registration token, from Expo.
   pushToken String?  @db.VarChar(512)
+  /// Browser Push API endpoint URL — the natural key of a web subscription.
+  pushEndpoint String? @db.VarChar(700)
+  /// `{ p256dh, auth }`: the client's ECDH public key and its shared secret.
+  /// Written by the browser, read only by the push sender, never returned by an
+  /// endpoint — a leaked subscription lets someone push to your device.
+  pushKeys    Json?
   appVersion String? @db.VarChar(32)
   lastSeenAt DateTime @default(now())
   createdAt DateTime @default(now())
@@ -136,6 +243,7 @@ model Device {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, pushToken])
+  @@unique([userId, pushEndpoint])
 }
 
 enum DevicePlatform {
@@ -181,11 +289,17 @@ model Conversation {
   title         String?  @db.VarChar(128) // groups only
   avatarUrl     String?  @db.VarChar(2048)
   createdBy     String?
+  /// Disappearing messages (5C): seconds a message lives after being sent in
+  /// this chat (0 = off). Members may change it; DIRECT chats only.
+  ephemeralSeconds Int    @default(0)
   createdAt     DateTime @default(now())
   lastMessageAt DateTime?
 
   members  ConversationMember[]
   messages Message[]
+  group    GroupProfile?
+  calls    Call[]
+  folders  ChatFolderItem[]
 
   @@index([lastMessageAt])
 }
@@ -195,28 +309,133 @@ enum ConversationType {
   GROUP
 }
 
+/// Group-specific settings, one row per GROUP conversation (WhatsApp-style).
+/// PRIVATE groups gate entry: members must be invited or approved by an admin.
+model GroupProfile {
+  conversationId     String     @id
+  visibility         GroupVisibility @default(PRIVATE)
+  requireApproval    Boolean    @default(false)
+  whoCanSend         GroupPermission @default(ALL)
+  whoCanEdit         GroupPermission @default(ADMINS)
+  announceOnly       Boolean    @default(false)
+  about              String?    @db.VarChar(512)
+  /// Group icon (5E): a MediaObject key from the same upload pipeline chats and
+  /// statuses use. Signed per read, so the key is never a public URL.
+  avatarStorageKey   String?
+  /// Who may share the invite link (5E). ALL = any member, ADMINS = only admins.
+  /// The invitee side of the same decision is the per-account
+  /// `User.groupAddVisibility` from 5C.
+  whoCanInvite       GroupPermission @default(ALL)
+  inviteCode         String     @unique @default(cuid())
+  inviteRevokedAt    DateTime?
+  createdAt          DateTime   @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+enum GroupVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+/// Who may perform a group action: every member, or only admins.
+enum GroupPermission {
+  ALL
+  ADMINS
+}
+
 model ConversationMember {
   id             String   @id @default(cuid())
   conversationId String
   userId         String
   role           MemberRole @default(MEMBER)
+  /// PENDING rows are private-group join requests awaiting admin approval.
+  joinState      MemberJoinState @default(ACTIVE)
+  invitedById    String?
+  invitedBy      User?    @relation("GroupInviter", fields: [invitedById], references: [id], onDelete: SetNull)
   joinedAt       DateTime @default(now())
   leftAt         DateTime?
   pinned         Boolean  @default(false)
   archived       Boolean  @default(false)
   mutedUntil     DateTime?
+  /// Notification routing for this viewer (5G). `MENTIONS_ONLY` is WhatsApp's
+  /// "only notify for mentions" and reads the 5E `MessageMention` rows;
+  /// `NOTHING` is the per-chat mute, while 5A's `mutedUntil` stays the timed one.
+  notifyMode     NotifyMode @default(ALL)
+  /// Per-chat notification tone (5G) — a client-side key the server only stores
+  /// so the choice follows the user to another device.
+  notifySound    String?  @db.VarChar(64)
+  /// Per-chat wallpaper (5G): a media key this user owns, or a `builtin:<id>`
+  /// token. Overrides the account-wide default on this viewer's side only.
+  wallpaperKey   String?  @db.VarChar(128)
   lastReadAt     DateTime?
+  /// "Clear chat": this viewer sees no messages created before this point.
+  clearedAt      DateTime?
+  /// "Delete chat": hidden from this viewer's list until they send or are
+  /// written to again (hiddenAt doubles as the clear watermark).
+  hidden         Boolean  @default(false)
+  hiddenAt       DateTime?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, userId])
   @@index([userId, archived, pinned])
+  @@index([conversationId, joinState])
 }
 
 enum MemberRole {
   MEMBER
   ADMIN
+}
+
+/// Who still gets a pushed notification from one chat (5G). `NOTHING` is
+/// WhatsApp's per-chat mute; `MENTIONS_ONLY` keeps the badge quiet until a
+/// `MessageMention` row names the viewer.
+enum NotifyMode {
+  ALL
+  MENTIONS_ONLY
+  NOTHING
+}
+
+/// The viewer's own chat folders (5G), the WhatsApp/Telegram "organise chats"
+/// feature. Per-viewer state that emits no socket event — like archive and pin,
+/// telling other people about someone's folder list would leak how they sort us.
+model ChatFolder {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   @db.VarChar(48)
+  emoji     String?  @db.VarChar(16)
+  /// Drag order within this viewer's sidebar; not unique, ties break by name.
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items ChatFolderItem[]
+
+  @@unique([userId, name])
+  @@index([userId, position])
+}
+
+/// One chat inside one folder. A chat may sit in several folders at once, which
+/// is why this is a join row and not a column on the conversation.
+model ChatFolderItem {
+  id             String   @id @default(cuid())
+  folderId       String
+  conversationId String
+  addedAt        DateTime @default(now())
+
+  folder       ChatFolder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([folderId, conversationId])
+  @@index([folderId])
+}
+
+enum MemberJoinState {
+  ACTIVE
+  PENDING
+  REJECTED
 }
 
 model Message {
@@ -230,18 +449,51 @@ model Message {
   replyToId      String?
   editedAt       DateTime?
   deletedAt      DateTime? // soft delete; body/attachments cleared
+  /// View-once media: each recipient may open the attachment exactly once.
+  viewOnce       Boolean  @default(false)
+  /// Set when this message was forwarded from another chat (WhatsApp's
+  /// "Forwarded" label). The original sender is never able to undo it.
+  forwardedFromUserId String?
+  /// Snapshot of the quoted message (sender name, snippet, media kind) taken at
+  /// send time so a reply quote keeps rendering after the original is deleted.
+  replyPreview   Json?
+  /// Server-scraped Open Graph card for the first link in `body` (5B extras).
+  /// Filled asynchronously after the send lands; null when nothing unfurled.
+  linkPreview    Json?
+  /// LOCATION payload: { latitude, longitude, name?, address?, mapsUrl? }.
+  location       Json?
+  /// CONTACT payload: the shared person's public card, frozen at share time.
+  contactCard    Json?
+  /// Disappearing messages (5C): hard-delete time, set at send when the chat's
+  /// timer is on. Null for permanent messages.
+  expiresAt      DateTime?
+  /// Status reply (5D): the status this message answers, so the chat can render
+  /// WhatsApp's quoted "In reply to their update" strip. SetNull when the
+  /// author deletes the status — the reply itself always survives.
+  statusReplyId  String?
   createdAt      DateTime @default(now())
 
   conversation Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User?            @relation("MessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+  forwardedFrom User?           @relation("MessageForwardedFrom", fields: [forwardedFromUserId], references: [id], onDelete: SetNull)
   replyTo      Message?         @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
   replies      Message[]        @relation("MessageReply")
   attachments  Attachment[]
   reactions    MessageReaction[]
   receipts     MessageReceipt[]
+  hiddenBy     MessageHidden[]
+  starredBy    StarredMessage[]
+  viewOnceViews ViewOnceView[]
+  mentions     MessageMention[]
+  pin          MessagePin?
+  statusReply  Status?          @relation("StatusReplies", fields: [statusReplyId], references: [id], onDelete: SetNull)
 
   @@unique([senderId, clientMessageId])
   @@index([conversationId, createdAt])
+  @@index([conversationId, type])
+  @@index([forwardedFromUserId])
+  @@index([expiresAt])
+  @@index([statusReplyId])
 }
 
 enum MessageType {
@@ -250,7 +502,11 @@ enum MessageType {
   VIDEO
   DOCUMENT
   VOICE
+  STICKER
   SYSTEM
+  // 5B extras: rich shares that carry a JSON payload instead of bytes.
+  LOCATION
+  CONTACT
 }
 
 model Attachment {
@@ -260,7 +516,9 @@ model Attachment {
   kind        AttachmentKind
   mimeType    String   @db.VarChar(128)
   sizeBytes   BigInt
-  storageKey  String   @unique // object-storage key; downloads via expiring URLs
+  /// Reference to stored bytes. Not unique: re-sending or forwarding a file
+  /// adds another row pointing at the same object.
+  storageKey  String
   fileName    String?  @db.VarChar(255)
   width       Int?
   height      Int?
@@ -270,6 +528,73 @@ model Attachment {
 
   message      Message?      @relation(fields: [messageId], references: [id], onDelete: Cascade)
   emailMessage EmailMessage? @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([storageKey])
+}
+
+/// Every object accepted by `POST /media/upload`, bound to the uploader.
+/// Attaching a media key to a message requires this row to exist and be owned
+/// by the sender, so a key seen in someone else's chat cannot be re-posted into
+/// a chat its owner is not in.
+model MediaObject {
+  id         String   @id @default(cuid())
+  ownerId    String
+  storageKey String   @unique
+  mimeType   String   @db.VarChar(128)
+  kind       AttachmentKind
+  sizeBytes  BigInt
+  createdAt  DateTime @default(now())
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+}
+
+/// View-once opens: one row per (message, viewer) — the second open returns
+/// nothing, which is the whole privacy promise of the feature.
+model ViewOnceView {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  viewedAt  DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation("ViewOnceViews", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+}
+
+/// @mention (5E): one row per account named in a group message, resolved
+/// server-side from the member roster at send time. Unread-mention badges read
+/// these rows against `ConversationMember.lastReadAt`, so a mention is never
+/// re-notified when someone else reads the chat.
+model MessageMention {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, createdAt])
+}
+
+/// Pinned message (5E): one row per pinned message, visible to the whole chat.
+/// Unpinning deletes the row, so "pinned" is exactly the set of rows here.
+model MessagePin {
+  id         String   @id @default(cuid())
+  messageId  String   @unique
+  pinnedById String
+  pinnedAt   DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation("MessagePinner", fields: [pinnedById], references: [id], onDelete: Cascade)
+
+  @@index([pinnedById])
 }
 
 enum AttachmentKind {
@@ -312,6 +637,205 @@ model MessageReceipt {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId])
+}
+
+/// "Delete for me": hides a message from one viewer without removing it for
+/// others. Distinct from Message.deletedAt (delete for everyone).
+model MessageHidden {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+}
+
+/// "Star message": a per-viewer bookmark (WhatsApp keeps stars per account,
+/// not per conversation), listed through the starred-messages view.
+model StarredMessage {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, createdAt])
+}
+
+// ─────────────────────────── Status (24h stories) ────────────────────────────
+
+/// Ephemeral user status, WhatsApp-style: text, photo, video, or link.
+/// Auto-expires at `expiresAt`; audience privacy mirrors last-seen visibility.
+model Status {
+  id          String   @id @default(cuid())
+  authorId    String
+  kind        StatusKind
+  text        String?  @db.Text // caption / message / URL
+  storageKey  String?  @unique // object-storage key for media kinds
+  mimeType    String?  @db.VarChar(128)
+  visibility  StatusVisibility @default(EVERYONE)
+  /// For CUSTOM: these accounts may view. Empty array = nobody.
+  audience    String[] @default([])
+  /// For CONTACTS_EXCEPT: these accounts may NOT view.
+  excluded    String[] @default([])
+  /// Author-side read-receipt toggle (5D). When false, views are never
+  /// recorded or broadcast for this status — the author cannot see who saw it.
+  shareReadReceipts Boolean @default(true)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  author User         @relation("StatusAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  views  StatusView[]
+  replies Message[]    @relation("StatusReplies")
+
+  @@index([authorId, expiresAt])
+  @@index([expiresAt])
+}
+
+enum StatusKind {
+  TEXT
+  IMAGE
+  VIDEO
+  URL
+}
+
+enum StatusVisibility {
+  EVERYONE
+  CONTACTS
+  CUSTOM
+  CONTACTS_EXCEPT
+}
+
+/// Who has watched a status (drives the "seen by" list; unlike WhatsApp this
+/// is visible to the author only).
+model StatusView {
+  id        String   @id @default(cuid())
+  statusId  String
+  userId    String
+  viewedAt  DateTime @default(now())
+
+  status Status @relation(fields: [statusId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([statusId, userId])
+  @@index([statusId])
+}
+
+/// "Mute one author's status updates" (5D). Per viewer, never broadcast —
+/// muting is private, exactly like 5A's chat controls.
+model StatusMute {
+  userId    String
+  authorId  String
+  createdAt DateTime @default(now())
+
+  user   User @relation("StatusMuter", fields: [userId], references: [id], onDelete: Cascade)
+  author User @relation("StatusMuted", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@id([userId, authorId])
+  @@index([userId])
+}
+
+// ─────────────────────────── Calls (Phase 5F) ────────────────────────────────
+
+/// One call attempt inside a 1-1 chat. The row is created when the caller
+/// starts ringing, so missed, declined and canceled calls keep their place in
+/// the history — the call log is the record, not just the connected sessions.
+/// Media itself never touches the database: WebRTC connects peer-to-peer and
+/// the server only relays signaling (see `CallEvent`).
+model Call {
+  id             String        @id @default(cuid())
+  conversationId String
+  callerId       String
+  mediaType      CallMediaType
+  status         CallStatus    @default(RINGING)
+  /// When media actually connected; null for calls that never got answered.
+  connectedAt    DateTime?
+  endedAt        DateTime?
+  /// Why a call ended without a normal hang-up (declined / busy / missed…).
+  /// Kept separate from `status` because a MISSED row is still an OPEN question
+  /// for the UI (tap to call back) while `declineReason` explains it.
+  declineReason  CallEndReason?
+  createdAt      DateTime      @default(now())
+
+  conversation Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  caller       User              @relation("CallCaller", fields: [callerId], references: [id], onDelete: Cascade)
+  participants CallParticipant[]
+  events       CallEvent[]
+
+  @@index([conversationId, createdAt])
+  @@index([callerId, createdAt])
+}
+
+enum CallMediaType {
+  VOICE
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  CONNECTED
+  ENDED
+  MISSED
+  DECLINED
+  CANCELED
+  BUSY
+  FAILED
+}
+
+enum CallEndReason {
+  HANG_UP
+  DECLINED
+  MISSED
+  BUSY
+  CANCELED
+  DISCONNECTED
+  FAILED
+}
+
+/// Who took part in a call. Rows are written for both sides when the call is
+/// created, so per-member state (mute, camera, join/leave) has a home and the
+/// group-call roster of later phases needs no new table.
+model CallParticipant {
+  id        String   @id @default(cuid())
+  callId    String
+  userId    String
+  joinedAt  DateTime?
+  leftAt    DateTime?
+  /// Caller-side join: the invitee has not answered yet.
+  answered  Boolean  @default(false)
+  muted     Boolean  @default(false)
+  cameraOff Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, userId])
+  @@index([userId, createdAt])
+}
+
+/// Append-only signaling/telemetry trail for one call (ring, accept, reject,
+/// ice-restart, hang-up…). It is the audit log for support disputes ("why did
+/// the call drop"), and it lets a reconnecting client replay the state.
+model CallEvent {
+  id        String   @id @default(cuid())
+  callId    String
+  userId    String?
+  event     String   @db.VarChar(64)
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  call Call  @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([callId, createdAt])
 }
 
 // ─────────────────────────── Mail (email system) ─────────────────────────────
@@ -457,20 +981,46 @@ model Notification {
   userId         String
   type           NotificationType
   conversationId String?
+  /// Who caused this (sender / caller / the user who just unblocked you).
+  /// `null` for SYSTEM rows. The name is stripped server-side before the row is
+  /// pushed when the recipient has `notifyPreview` off.
+  actorId        String?
+  /// Jump target for a tap. Kept as bare ids, not FKs: clearing a chat or
+  /// deleting a message must not delete the history of what you were told.
+  messageId      String?
+  callId         String?
+  /// Collapse key — one live notification per (kind, thread), so forty messages
+  /// in a group become one row that says "4 new messages" instead of forty.
+  /// Re-firing resets `readAt`. Null = never collapse (SYSTEM rows).
+  dedupeKey      String?  @db.VarChar(128)
+  /// How many events this collapsed row stands for. Written fresh at 1 and
+  /// incremented while it stays unread; a read alert starts a new count.
+  count          Int      @default(1)
   title          String   @db.VarChar(255)
   body           String?  @db.VarChar(512)
+  /// Deep-link payload, e.g. `{ "conversationId": "..." }`. Never contains
+  /// content the preview setting has already withheld.
   data           Json?
   readAt         DateTime?
+  /// Swiped away in the shade without being opened — distinct from read, which
+  /// the in-app centre can still show.
+  dismissedAt    DateTime?
   createdAt      DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User  @relation("NotificationOwner", fields: [userId], references: [id], onDelete: Cascade)
+  actor User? @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, dedupeKey])
   @@index([userId, createdAt, readAt])
+  @@index([userId, readAt, createdAt])
 }
 
 enum NotificationType {
   CHAT_MESSAGE
+  /// An @-mention in a group whose chat is muted or set to mentions-only.
+  MENTION
   MAIL_MESSAGE
+  CALL_MISSED
   SYSTEM
 }
 

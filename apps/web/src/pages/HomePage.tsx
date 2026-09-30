@@ -1,12 +1,22 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { CallOverlay } from "../components/CallOverlay";
+import { CallsSection } from "../components/CallsSection";
 import { ChatsSection } from "../components/ChatsSection";
 import { MailSection } from "../components/MailSection";
-import { ChatIcon, ContactsIcon, MailIcon, PhoneIcon, PlusIcon, SearchIcon, SettingsIcon } from "../components/icons";
+import { StatusSection } from "../components/StatusSection";
+import { ChatIcon, ContactsIcon, MailIcon, PhoneIcon, PlusIcon, SearchIcon, SettingsIcon, StatusIcon } from "../components/icons";
 import { Badge, Button, Logo, cx } from "../components/ui";
 import { useAuth } from "../lib/auth";
 
-type Section = "chats" | "mail";
+type Section = "chats" | "mail" | "status" | "calls";
+
+const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
+  chats: { title: "Chats", subtitle: "Phone-number messaging" },
+  mail: { title: "Mail", subtitle: "Email conversations" },
+  status: { title: "Status", subtitle: "Updates that disappear" },
+  calls: { title: "Calls", subtitle: "Voice and video history" },
+};
 
 export function HomePage() {
   const { account } = useAuth();
@@ -17,7 +27,11 @@ export function HomePage() {
   if (!account) return null;
   const chatsAvailable = account.capabilities.chats;
   const mailAvailable = account.capabilities.mail;
-  const activeAvailable = section === "chats" ? chatsAvailable : mailAvailable;
+  const isStatus = section === "status";
+  // The call log is always open: it lists what already happened, and dialling
+  // from it needs the same phone identity the chats do.
+  const noComposer = isStatus || section === "calls";
+  const activeAvailable = noComposer ? true : section === "chats" ? chatsAvailable : mailAvailable;
 
   return (
     <div className="flex h-full">
@@ -31,6 +45,8 @@ export function HomePage() {
             badge={chatsAvailable ? undefined : "Connect"} />
           <NavItem icon={<MailIcon />} label="Mail" active={section === "mail"} onClick={() => setSection("mail")}
             badge={mailAvailable ? undefined : "Connect"} />
+          <NavItem icon={<StatusIcon />} label="Status" active={section === "status"} onClick={() => setSection("status")} />
+          <NavItem icon={<PhoneIcon />} label="Calls" active={section === "calls"} onClick={() => setSection("calls")} />
           <NavItem icon={<ContactsIcon />} label="Contacts" disabled soon />
           <Link to="/settings">
             <NavItem icon={<SettingsIcon />} label="Settings" />
@@ -59,39 +75,45 @@ export function HomePage() {
           </div>
           <div className="hidden md:block">
             <h1 className="text-lg font-bold tracking-tight text-ink-900 dark:text-white">
-              {section === "chats" ? "Chats" : "Mail"}
+              {SECTION_META[section].title}
             </h1>
-            <p className="text-xs text-ink-400">
-              {section === "chats" ? "Phone-number messaging" : "Email conversations"}
-            </p>
+            <p className="text-xs text-ink-400">{SECTION_META[section].subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative hidden sm:block">
-              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-              <input
-                placeholder={`Search ${section}…`}
+            {!noComposer && (
+              <div className="relative hidden sm:block">
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                <input
+                  placeholder={`Search ${section}…`}
+                  disabled={!activeAvailable}
+                  className="w-52 rounded-full border border-ink-200 bg-ink-50 py-2 pl-9 pr-4 text-sm placeholder:text-ink-400 focus:border-iris-400 focus:outline-none disabled:opacity-50 dark:border-night-border dark:bg-night-raised"
+                />
+              </div>
+            )}
+            {!noComposer && (
+              <Button
+                className="!px-3.5"
                 disabled={!activeAvailable}
-                className="w-52 rounded-full border border-ink-200 bg-ink-50 py-2 pl-9 pr-4 text-sm placeholder:text-ink-400 focus:border-iris-400 focus:outline-none disabled:opacity-50 dark:border-night-border dark:bg-night-raised"
-              />
-            </div>
-            <Button
-              className="!px-3.5"
-              disabled={!activeAvailable}
-              title={activeAvailable ? "New" : "Connect an identity first"}
-              onClick={() => {
-                if (section === "chats") setNewChatNonce((n) => n + 1);
-                else setNewMailNonce((n) => n + 1);
-              }}
-            >
-              <PlusIcon className="h-4 w-4" />
-              <span className="hidden sm:inline">{section === "chats" ? "New chat" : "New mail"}</span>
-            </Button>
+                title={activeAvailable ? "New" : "Connect an identity first"}
+                onClick={() => {
+                  if (section === "chats") setNewChatNonce((n) => n + 1);
+                  else setNewMailNonce((n) => n + 1);
+                }}
+              >
+                <PlusIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">{section === "chats" ? "New chat" : "New mail"}</span>
+              </Button>
+            )}
           </div>
         </header>
 
         <div className="min-h-0 flex-1">
           {!activeAvailable ? (
             <ConnectIdentityPrompt section={section} />
+          ) : isStatus ? (
+            <StatusSection />
+          ) : section === "calls" ? (
+            <CallsSection />
           ) : section === "chats" ? (
             <ChatsSection newChatNonce={newChatNonce} />
           ) : (
@@ -103,6 +125,8 @@ export function HomePage() {
         <nav className="flex border-t border-ink-200/70 bg-white md:hidden dark:border-night-border dark:bg-night-surface">
           <TabButton icon={<ChatIcon />} label="Chats" active={section === "chats"} onClick={() => setSection("chats")} />
           <TabButton icon={<MailIcon />} label="Mail" active={section === "mail"} onClick={() => setSection("mail")} />
+          <TabButton icon={<StatusIcon />} label="Status" active={section === "status"} onClick={() => setSection("status")} />
+          <TabButton icon={<PhoneIcon />} label="Calls" active={section === "calls"} onClick={() => setSection("calls")} />
           <Link to="/settings" className="flex-1">
             <div className="flex flex-col items-center gap-1 py-2.5 text-ink-500">
               <SettingsIcon className="h-5 w-5" />
@@ -126,6 +150,9 @@ export function HomePage() {
           </div>
         </div>
       </aside>
+
+      {/* One call surface for the whole app: an incoming ring interrupts any tab. */}
+      <CallOverlay />
     </div>
   );
 }

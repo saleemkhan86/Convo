@@ -8,6 +8,7 @@ import type { AppDeps } from "../deps.js";
 import { unauthorized } from "../lib/errors.js";
 import { parse } from "../lib/validation.js";
 import { authenticatePreHandler } from "../plugins/auth.js";
+import { notifyUser, type NotifyDeps as NotificationDeps } from "../services/notifications.js";
 import {
   composeMail,
   listThreadMessages,
@@ -19,7 +20,14 @@ import {
 
 export async function mailRoutes(app: FastifyInstance, deps: AppDeps): Promise<void> {
   app.addHook("preHandler", authenticatePreHandler(deps.db));
-  const svc: MailDeps = { db: deps.db, hub: deps.hub };
+  const notifySvc: NotificationDeps = { db: deps.db, hub: deps.hub, push: deps.push };
+  const svc: MailDeps = {
+    db: deps.db,
+    hub: deps.hub,
+    // Phase 5G: notify each internal recipient about a new mail message.
+    notifyRecipient: (userId, title, body, actorId, conversationId, messageId) =>
+      notifyUser(notifySvc, { userId, type: "MAIL_MESSAGE", title, body, actorId, conversationId, messageId }),
+  };
 
   app.get("/mail/threads", async (request) => {
     const q = parse(cursorQuerySchema, request.query);

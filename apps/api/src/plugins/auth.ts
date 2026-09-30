@@ -6,6 +6,8 @@ import { userWithIdentities, type UserWithIdentities } from "../services/account
 declare module "fastify" {
   interface FastifyRequest {
     currentUser?: UserWithIdentities;
+    /** Refresh-token row backing this access token, for the sessions list. */
+    currentSessionId?: string;
   }
 }
 
@@ -14,13 +16,14 @@ export function authenticatePreHandler(db: PrismaClient) {
     const token = extractBearerToken(request.headers.authorization);
     if (!token) throw unauthorized();
 
-    let payload: { sub?: string };
+    let payload: { sub?: string; sid?: string };
     try {
-      payload = request.server.jwt.verify<{ sub: string }>(token);
+      payload = request.server.jwt.verify<{ sub: string; sid?: string }>(token);
     } catch {
       throw unauthorized("Session expired. Please sign in again.");
     }
     if (!payload.sub) throw unauthorized();
+    request.currentSessionId = payload.sid;
 
     const user = await db.user.findUnique({
       where: { id: payload.sub },

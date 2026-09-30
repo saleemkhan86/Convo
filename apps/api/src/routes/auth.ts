@@ -5,11 +5,19 @@ import {
   requestPhoneOtpRequestSchema,
   verifyEmailOtpRequestSchema,
   verifyPhoneOtpRequestSchema,
+  verifyTwoFactorRequestSchema,
 } from "@convo/shared";
 import type { AppDeps } from "../deps.js";
 import { parse } from "../lib/validation.js";
 import type { AuthDeps } from "../services/auth.js";
-import { logout, refreshSession, requestEmailOtp, requestPhoneOtp, verifyLoginOtp } from "../services/auth.js";
+import {
+  logout,
+  refreshSession,
+  requestEmailOtp,
+  requestPhoneOtp,
+  verifyLoginOtp,
+  verifyTwoFactorLogin,
+} from "../services/auth.js";
 
 const OTP_REQUEST_LIMIT = { max: 5, timeWindow: "1 minute" as const };
 const OTP_VERIFY_LIMIT = { max: 10, timeWindow: "1 minute" as const };
@@ -53,6 +61,15 @@ export async function authRoutes(app: FastifyInstance, deps: AppDeps): Promise<v
     async (request) => {
       const body = parse(verifyEmailOtpRequestSchema, request.body);
       return verifyLoginOtp(depsToAuth(deps, app), body, loginCtx(request));
+    },
+  );
+
+  app.post(
+    "/auth/2fa/verify",
+    { config: { rateLimit: OTP_VERIFY_LIMIT } },
+    async (request) => {
+      const body = parse(verifyTwoFactorRequestSchema, request.body);
+      return verifyTwoFactorLogin(depsToAuth(deps, app), body, loginCtx(request));
     },
   );
 

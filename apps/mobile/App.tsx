@@ -1,15 +1,22 @@
 import { useEffect, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, View, useColorScheme } from "react-native";
-import type { Account, AuthResult, ConversationSummary, MailThreadSummary } from "@convo/shared";
+import type { Account, ConversationSummary, MailThreadSummary, SessionAuthResult } from "@convo/shared";
 import { api, hydrateSession } from "./src/api";
+import { CallOverlay } from "./src/components/CallOverlay";
 import { connectRealtime, disconnectRealtime } from "./src/realtime";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { ChatRoomScreen } from "./src/screens/ChatRoomScreen";
 import { ConnectIdentityScreen } from "./src/screens/ConnectIdentityScreen";
+import { ContactsScreen } from "./src/screens/ContactsScreen";
+import { GroupDirectoryScreen } from "./src/screens/GroupDirectoryScreen";
+import { GroupInfoScreen } from "./src/screens/GroupInfoScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { MailThreadScreen } from "./src/screens/MailThreadScreen";
+import { SearchScreen } from "./src/screens/SearchScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
+import { StarredScreen } from "./src/screens/StarredScreen";
+import { UserCardScreen } from "./src/screens/UserCardScreen";
 import { WelcomeScreen, type AuthChannel } from "./src/screens/WelcomeScreen";
 import { darkPalette, lightPalette } from "./src/theme";
 
@@ -19,7 +26,13 @@ type Route =
   | { name: "home" }
   | { name: "settings" }
   | { name: "chatRoom"; conversation: ConversationSummary }
+  | { name: "groupInfo"; conversation: ConversationSummary }
+  | { name: "groupDirectory" }
   | { name: "mailThread"; thread: MailThreadSummary }
+  | { name: "contacts" }
+  | { name: "starred" }
+  | { name: "search" }
+  | { name: "userCard"; userId: string }
   | { name: "connect"; channel: "email" | "phone" };
 
 export default function App() {
@@ -51,7 +64,7 @@ export default function App() {
     };
   }, []);
 
-  const handleSignedIn = async (result: AuthResult) => {
+  const handleSignedIn = async (result: SessionAuthResult) => {
     await api.signInWith(result);
     setAccount(result.account);
     setRoute({ name: "home" });
@@ -60,6 +73,14 @@ export default function App() {
   const handleSignedOut = () => {
     setAccount(null);
     setRoute({ name: "welcome" });
+  };
+
+  /** Search, starred and the contact card only know ids; the chat needs its summary. */
+  const openConversationById = async (conversationId: string) => {
+    const list = await api.listConversations().catch(() => null);
+    const found = list?.conversations.find((c) => c.id === conversationId);
+    if (found) setRoute({ name: "chatRoom", conversation: found });
+    else setRoute({ name: "home" });
   };
 
   // Keep the realtime socket alive for as long as we're authenticated.
@@ -98,6 +119,11 @@ export default function App() {
           onConnect={(channel) => setRoute({ name: "connect", channel })}
           onOpenChat={(conversation) => setRoute({ name: "chatRoom", conversation })}
           onOpenThread={(thread) => setRoute({ name: "mailThread", thread })}
+          onOpenGroups={() => setRoute({ name: "groupDirectory" })}
+          onOpenContacts={() => setRoute({ name: "contacts" })}
+          onOpenStarred={() => setRoute({ name: "starred" })}
+          onOpenSearch={() => setRoute({ name: "search" })}
+          onOpenUser={(userId) => setRoute({ name: "userCard", userId })}
         />
       )}
       {route.name === "chatRoom" && account && (
@@ -105,6 +131,51 @@ export default function App() {
           conversation={route.conversation}
           account={account}
           onBack={() => setRoute({ name: "home" })}
+          onOpenGroup={() => setRoute({ name: "groupInfo", conversation: route.conversation })}
+          onOpenUser={(userId) => setRoute({ name: "userCard", userId })}
+        />
+      )}
+      {route.name === "groupInfo" && account && (
+        <GroupInfoScreen
+          conversationId={route.conversation.id}
+          selfUserId={account.id}
+          onBack={() => setRoute({ name: "chatRoom", conversation: route.conversation })}
+          onLeft={() => setRoute({ name: "home" })}
+          onOpenChat={() => setRoute({ name: "chatRoom", conversation: route.conversation })}
+        />
+      )}
+      {route.name === "groupDirectory" && (
+        <GroupDirectoryScreen
+          onBack={() => setRoute({ name: "home" })}
+          onOpenGroup={(conversationId) => void openConversationById(conversationId)}
+        />
+      )}
+      {route.name === "contacts" && (
+        <ContactsScreen
+          onBack={() => setRoute({ name: "home" })}
+          onOpenChat={(conversation) => setRoute({ name: "chatRoom", conversation })}
+          onOpenConversation={(conversationId) => void openConversationById(conversationId)}
+          onOpenUser={(userId) => setRoute({ name: "userCard", userId })}
+        />
+      )}
+      {route.name === "starred" && (
+        <StarredScreen
+          onBack={() => setRoute({ name: "home" })}
+          onOpenConversation={(conversationId) => void openConversationById(conversationId)}
+        />
+      )}
+      {route.name === "search" && (
+        <SearchScreen
+          onBack={() => setRoute({ name: "home" })}
+          onOpenChat={(conversation) => setRoute({ name: "chatRoom", conversation })}
+          onOpenConversation={(conversationId) => void openConversationById(conversationId)}
+        />
+      )}
+      {route.name === "userCard" && (
+        <UserCardScreen
+          userId={route.userId}
+          onBack={() => setRoute({ name: "home" })}
+          onOpenConversation={(conversationId) => void openConversationById(conversationId)}
         />
       )}
       {route.name === "mailThread" && account && (
@@ -134,6 +205,8 @@ export default function App() {
           }}
         />
       )}
+      {/* Mounted outside the router so a ring can interrupt any screen. */}
+      {authed && <CallOverlay />}
     </>
   );
 }

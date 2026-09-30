@@ -7,6 +7,7 @@ import { AppError, unauthorized } from "../lib/errors.js";
 import { generateOpaqueToken, hashToken } from "../lib/tokens.js";
 import { toAccount, userWithIdentities, type UserWithIdentities } from "./account.js";
 import { createChallenge, verifyChallengeCode, type ChallengeContext } from "./challenges.js";
+import { consumeTwoFactorToken, startTwoFactorChallenge } from "./security.js";
 
 export interface AuthDeps {
   db: PrismaClient;
@@ -71,6 +72,25 @@ export async function verifyLoginOtp(
     throw new AppError(403, "FORBIDDEN", "This account has been suspended");
   }
 
+  // Two-step verification (Phase 5C): the OTP proved the identity, the PIN
+  // proves the person. No session exists until both are in hand.
+  if (user.twoFactorHash) {
+    const started = await startTwoFactorChallenge(deps.db, user.id);
+    await deps.db.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "auth.login_second_factor",
+        metadata: { channel: challenge.channel, challengeId: challenge.id },
+        ip: ctx.ip,
+      },
+    });
+    return {
+      twoFactorRequired: true,
+      twoFactorToken: started.token,
+      expiresInSeconds: started.expiresInSeconds,
+    };
+  }
+
   const session = await issueSession(deps, user.id, ctx);
 
   await deps.db.auditLog.create({
@@ -85,8 +105,37 @@ export async function verifyLoginOtp(
   return { session, account: toAccount(user), isNewAccount };
 }
 
-/** Restores the account owning this identity, or creates one (flows A/B vs C/D). */
-async function findOrCreateAccount(
+/**
+ * Second leg of a two-step-verification login (`POST /auth/2fa/verify`): the
+ * OTP already succeeded, so the one-time token + PIN now mint the session.
+ */
+export async function verifyTwoFactorLogin(
+  deps: AuthDeps,
+  input: { twoFactorToken: string; pin: string },
+  ctx: LoginContext,
+): Promise<AuthResult> {
+  const userId = await consumeTwoFactorToken(deps.db, input.twoFactorToken, input.pin);
+  const user = await deps.db.user.findUniqueOrThrow({
+    where: { id: userId },
+    ...userWithIdentities,
+  });
+  if (user.status === "BANNED") {
+    throw new AppError(403, "FORBIDDEN", "This account has been suspended");
+  }
+
+  const session = await issueSession(deps, user.id, ctx);
+  await deps.db.auditLog.create({
+    data: {
+      userId: user.id,
+      action: "auth.login",
+      metadata: { channel: "PHONE", secondFactor: true },
+      ip: ctx.ip,
+    },
+  });
+  return { session, account: toAccount(user), isNewAccount: false };
+}
+
+/** Restores the account owning this identity, or creates one (flows A/B vs C/D). */async function findOrCreateAccount(
   db: PrismaClient,
   channel: "PHONE" | "EMAIL",
   target: string,

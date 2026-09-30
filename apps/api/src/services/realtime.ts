@@ -32,6 +32,17 @@ function safeSend(socket: SocketLike, event: WsServerEvent): void {
 }
 
 /**
+ * Presence gating hook (Phase 5C): the hub asks whether `watcherId` may see
+ * `targetId`'s online state before emitting anything. Absent = always visible.
+ * Must never throw; a rejecting resolver hides the transition.
+ */
+export type PresenceVisible = (watcherId: string, targetId: string) => Promise<boolean>;
+
+export interface HubOptions {
+  presenceVisible?: PresenceVisible;
+}
+
+/**
  * Single-process in-memory hub. Horizontal scaling requires a pub/sub
  * backend (e.g. Redis); the interface is the seam for that swap (docs/TODO).
  */
@@ -39,8 +50,15 @@ export class InMemoryHub implements RealtimeHub {
   private readonly sockets = new Map<string, Set<SocketLike>>();
   private readonly watchersByTarget = new Map<string, Set<SocketLike>>();
   private readonly targetsByWatcher = new Map<SocketLike, Set<string>>();
+  private readonly userBySocket = new Map<SocketLike, string>();
+  private readonly presenceVisible?: PresenceVisible;
+
+  constructor(opts: HubOptions = {}) {
+    this.presenceVisible = opts.presenceVisible;
+  }
 
   add(userId: string, socket: SocketLike): void {
+    this.userBySocket.set(socket, userId);
     let set = this.sockets.get(userId);
     if (!set) {
       set = new Set();
@@ -52,6 +70,7 @@ export class InMemoryHub implements RealtimeHub {
   }
 
   remove(userId: string, socket: SocketLike): void {
+    this.userBySocket.delete(socket);
     const set = this.sockets.get(userId);
     if (!set) return;
     set.delete(socket);
@@ -80,6 +99,7 @@ export class InMemoryHub implements RealtimeHub {
       targets = new Set();
       this.targetsByWatcher.set(watcher, targets);
     }
+    const watcherId = this.userBySocket.get(watcher);
     for (const userId of userIds) {
       targets.add(userId);
       let set = this.watchersByTarget.get(userId);
@@ -88,7 +108,7 @@ export class InMemoryHub implements RealtimeHub {
         this.watchersByTarget.set(userId, set);
       }
       set.add(watcher);
-      safeSend(watcher, { type: "presence", userId, online: this.isOnline(userId) });
+      this.sendPresence(watcher, watcherId, userId, this.isOnline(userId));
     }
   }
 
@@ -107,6 +127,29 @@ export class InMemoryHub implements RealtimeHub {
   private emitPresence(userId: string, online: boolean): void {
     const watchers = this.watchersByTarget.get(userId);
     if (!watchers) return;
-    for (const watcher of watchers) safeSend(watcher, { type: "presence", userId, online });
+    for (const watcher of watchers) {
+      this.sendPresence(watcher, this.userBySocket.get(watcher), userId, online);
+    }
+  }
+
+  /** One presence frame, held back when the target hides their online state. */
+  private sendPresence(
+    watcher: SocketLike,
+    watcherId: string | undefined,
+    targetId: string,
+    online: boolean,
+  ): void {
+    const send = (): void => safeSend(watcher, { type: "presence", userId: targetId, online });
+    if (!this.presenceVisible || watcherId === undefined || watcherId === targetId) {
+      send();
+      return;
+    }
+    void this.presenceVisible(watcherId, targetId)
+      .then((visible) => {
+        if (visible) send();
+      })
+      .catch(() => {
+        /* visibility check failed — stay silent */
+      });
   }
 }

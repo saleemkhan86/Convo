@@ -1,8 +1,16 @@
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
-import { wsClientEventSchema } from "@convo/shared";
+import { wsClientEventSchema, type WsCallClientEvent } from "@convo/shared";
 import type { AppDeps } from "../deps.js";
-import { markRead } from "../services/conversations.js";
+import { markRead, recordLastSeen } from "../services/conversations.js";
+import {
+  acceptCall,
+  callService,
+  declineCall,
+  hangUpCall,
+  relayCallSignal,
+  setCallParticipantState,
+} from "../services/calls.js";
 
 const UNAUTHORIZED_CLOSE = 4401;
 
@@ -53,13 +61,20 @@ async function handleSocket(
   });
 
   socket.on("close", () => {
-    deps.hub.unwatchAll(socket);
-    deps.hub.remove(userId, socket);
+    onDisconnect(deps, socket, userId);
   });
   socket.on("error", () => {
-    deps.hub.unwatchAll(socket);
-    deps.hub.remove(userId, socket);
+    onDisconnect(deps, socket, userId);
   });
+}
+
+function onDisconnect(deps: AppDeps, socket: WebSocket, userId: string): void {
+  deps.hub.unwatchAll(socket);
+  deps.hub.remove(userId, socket);
+  // Last socket for this user closed → record when they went offline.
+  if (!deps.hub.isOnline(userId)) {
+    void recordLastSeen(deps.db, userId).catch(() => {});
+  }
 }
 
 async function onClientEvent(
@@ -103,6 +118,56 @@ async function onClientEvent(
         // Membership or message validation failed; ignore on the socket.
       }
       return;
+    case "call.accept":
+    case "call.reject":
+    case "call.cancel":
+    case "call.hangUp":
+    case "call.signal":
+    case "call.state":
+      await handleCallEvent(deps, userId, event);
+      return;
+  }
+}
+
+/**
+ * Call control and signaling (Phase 5F). Everything here is best-effort from
+ * the socket's point of view: a rejected transition (already answered, call
+ * over, not a participant) is dropped silently, because the client's own REST
+ * view plus the next `call.ended` frame is what makes its UI correct.
+ */
+async function handleCallEvent(
+  deps: AppDeps,
+  userId: string,
+  event: WsCallClientEvent,
+): Promise<void> {
+  const svc = callService(deps);
+  try {
+    switch (event.type) {
+      case "call.accept":
+        await acceptCall(svc, userId, event.callId);
+        return;
+      case "call.reject":
+        await declineCall(svc, userId, event.callId, event.reason);
+        return;
+      // `call.cancel` (caller) and `call.hangUp` (either side) are the same
+      // client intent: the state machine picks cancel/decline/end by status.
+      case "call.cancel":
+      case "call.hangUp":
+        await hangUpCall(svc, userId, event.callId);
+        return;
+      case "call.signal":
+        await relayCallSignal(svc, userId, event.callId, event.payload);
+        return;
+      case "call.state":
+        await setCallParticipantState(svc, userId, event.callId, {
+          muted: event.muted,
+          cameraOff: event.cameraOff,
+        });
+        return;
+    }
+  } catch {
+    // Invalid transition — the terminal `call.ended` frame already told the
+    // truth, so there is nothing to report back over the socket.
   }
 }
 

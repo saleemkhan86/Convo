@@ -7,5 +7,7 @@ build/
 .env.local
 .env.*.local
 apps/api/prisma/*.db
+# Local media storage (MEDIA_STORAGE_PROVIDER=local) — user uploads, never commit
+.data/
 coverage/
 .DS_Store

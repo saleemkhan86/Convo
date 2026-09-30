@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeftIcon, CheckIcon, MailIcon, PhoneIcon } from "../components/icons";
 import { Badge, Button, Card, Input, Logo, cx } from "../components/ui";
+import { PrivacySection, SecuritySection } from "../components/PrivacySecurity";
 import { ApiRequestError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTheme, type ThemeMode } from "../lib/theme";
@@ -119,16 +120,50 @@ export function SettingsPage() {
           </Card>
         </section>
 
-        {/* Placeholder sections for later phases */}
+        {/* Media auto-download (Phase 5B extras, spec §24) */}
         <section>
-          <SectionTitle>Privacy · Notifications · Storage · Security</SectionTitle>
+          <SectionTitle>Storage &amp; data</SectionTitle>
           <Card>
-            <p className="text-sm text-ink-500 dark:text-ink-400">
-              Privacy controls, per-conversation notifications, storage
-              management and active-session controls arrive in later phases
-              (see docs/TODO.md).
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Media auto-download</p>
+            <p className="mt-1 text-xs text-ink-500 dark:text-ink-400">
+              Heavy chat videos and voice notes wait for a tap when you are not on Wi-Fi.
             </p>
+            <div className="mt-3 flex gap-2">
+              {([
+                ["ALWAYS", "Always"],
+                ["WIFI_ONLY", "Wi-Fi only"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() =>
+                    void api
+                      .updateProfile({ mediaAutoDownload: value })
+                      .then(setAccount)
+                      .catch(() => {})
+                  }
+                  className={cx(
+                    "flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors",
+                    (account.mediaAutoDownload ?? "ALWAYS") === value
+                      ? "border-iris-500 bg-iris-50 text-iris-700 dark:bg-iris-500/15 dark:text-iris-300"
+                      : "border-ink-200 text-ink-500 hover:border-ink-300 dark:border-night-border dark:text-ink-400",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </Card>
+        </section>
+
+        {/* Privacy + security (Phase 5C) */}
+        <section>
+          <SectionTitle>Privacy</SectionTitle>
+          <PrivacySection />
+        </section>
+
+        <section>
+          <SectionTitle>Security</SectionTitle>
+          <SecuritySection />
         </section>
 
         <section>

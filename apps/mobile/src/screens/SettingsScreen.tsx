@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
-import type { Account } from "@convo/shared";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import type { Account, MediaAutoDownload } from "@convo/shared";
 import { api, ApiRequestError } from "../api";
+import { PrivacySection, SecuritySection } from "../components/PrivacySecurity";
 import { Button, CardBox, Heading, Muted, Screen, TextField, usePalette } from "../components/ui";
-import { colors, spacing } from "../theme";
+import { colors, radius, spacing } from "../theme";
 
 export function SettingsScreen({
   account,
@@ -21,6 +22,7 @@ export function SettingsScreen({
   const palette = usePalette();
   const [displayName, setDisplayName] = useState(account.displayName ?? "");
   const [saving, setSaving] = useState(false);
+  const [savingPref, setSavingPref] = useState<MediaAutoDownload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const saveProfile = async () => {
@@ -76,6 +78,61 @@ export function SettingsScreen({
           <TextField label="Display name" value={displayName} onChangeText={setDisplayName} placeholder="How contacts see you" error={error} palette={palette} />
           <Button label="Save profile" onPress={() => void saveProfile()} loading={saving} variant="secondary" />
         </CardBox>
+
+        <CardBox palette={palette}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: palette.textFaint, textTransform: "uppercase", letterSpacing: 1 }}>
+            Storage &amp; data
+          </Text>
+          <Text style={{ fontSize: 13, color: palette.textMuted }}>Media auto-download</Text>
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            {([
+              { value: "ALWAYS", label: "Always" },
+              { value: "WIFI_ONLY", label: "Wi-Fi only" },
+            ] as const).map((option) => {
+              const active = (account.mediaAutoDownload ?? "ALWAYS") === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  disabled={savingPref !== null}
+                  onPress={() => {
+                    if (active) return;
+                    setSavingPref(option.value);
+                    api
+                      .updateProfile({ mediaAutoDownload: option.value })
+                      .then(onAccountUpdated)
+                      .catch(() => {})
+                      .finally(() => setSavingPref(null));
+                  }}
+                  style={{
+                    flex: 1,
+                    borderRadius: radius.field,
+                    borderWidth: 1,
+                    paddingVertical: 10,
+                    alignItems: "center",
+                    borderColor: active ? colors.iris500 : palette.border,
+                    backgroundColor: active ? colors.iris100 : "transparent",
+                    opacity: savingPref !== null && !active ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "800", color: active ? colors.iris700 : palette.textMuted }}>
+                    {savingPref === option.value ? "Saving…" : option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Muted palette={palette}>
+            Wi-Fi only holds back videos and voice notes on mobile data until you tap to download them.
+          </Muted>
+        </CardBox>
+
+        <PrivacySection account={account} onAccountUpdated={onAccountUpdated} />
+
+        <SecuritySection
+          account={account}
+          onAccountUpdated={onAccountUpdated}
+          onSignedOut={onSignedOut}
+        />
 
         <CardBox palette={palette}>
           <Text style={{ fontSize: 12, fontWeight: "700", color: palette.textFaint, textTransform: "uppercase", letterSpacing: 1 }}>

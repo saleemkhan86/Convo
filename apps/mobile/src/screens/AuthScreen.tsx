@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
-import type { AuthResult, Challenge } from "@convo/shared";
+import type { AuthResult, Challenge, SessionAuthResult } from "@convo/shared";
 import { api, ApiRequestError } from "../api";
 import { Button, CardBox, Heading, Muted, Screen, TextField, usePalette } from "../components/ui";
 import { colors, spacing } from "../theme";
@@ -13,14 +13,16 @@ export function AuthScreen({
 }: {
   channel: AuthChannel;
   onBack: () => void;
-  onSignedIn: (result: AuthResult) => void;
+  onSignedIn: (result: SessionAuthResult) => void;
 }) {
   const isEmail = channel === "email";
   const palette = usePalette();
-  const [step, setStep] = useState<"target" | "otp">("target");
+  const [step, setStep] = useState<"target" | "otp" | "pin">("target");
   const [target, setTarget] = useState("");
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [code, setCode] = useState("");
+  const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
+  const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,10 +61,28 @@ export function AuthScreen({
     setBusy(true);
     setError(null);
     try {
-      const result = isEmail
+      const result: AuthResult = isEmail
         ? await api.verifyEmailOtp(challenge.challengeId, code)
         : await api.verifyPhoneOtp(challenge.challengeId, code);
-      onSignedIn(result);
+      if ("session" in result) {
+        onSignedIn(result);
+        return;
+      }
+      setTwoFactorToken(result.twoFactorToken);
+      setStep("pin");
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyPin = async () => {
+    if (!twoFactorToken || pin.length !== 6) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onSignedIn(await api.verifyTwoFactor(twoFactorToken, pin));
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : "Something went wrong");
     } finally {
@@ -81,14 +101,18 @@ export function AuthScreen({
                 ? isEmail
                   ? "Continue with your email"
                   : "Continue with your phone number"
-                : "Enter your code"}
+                : step === "otp"
+                  ? "Enter your code"
+                  : "Enter your PIN"}
             </Heading>
             <Muted palette={palette}>
               {step === "target"
                 ? isEmail
                   ? "Your email identity powers Mail on Convo."
                   : "Your phone identity powers Chats on Convo."
-                : `We sent a 6-digit code to ${target}`}
+                : step === "otp"
+                  ? `We sent a 6-digit code to ${target}`
+                  : "Two-step verification is on for this account."}
             </Muted>
           </View>
 
@@ -107,7 +131,7 @@ export function AuthScreen({
                 />
                 <Button label="Send verification code" onPress={() => void requestOtp()} loading={busy} />
               </>
-            ) : (
+            ) : step === "otp" ? (
               <>
                 {challenge?.devOtp && (
                   <View style={{ backgroundColor: colors.amberBg, borderRadius: 12, padding: 12 }}>
@@ -128,6 +152,30 @@ export function AuthScreen({
                 />
                 <Button label="Verify and continue" onPress={() => void verifyOtp()} loading={busy} disabled={code.length !== 6} />
                 <Button label={isEmail ? "Use a different email" : "Use a different number"} variant="ghost" onPress={() => { setStep("target"); setError(null); setCode(""); }} />
+              </>
+            ) : (
+              <>
+                <TextField
+                  label="Security PIN"
+                  value={pin}
+                  onChangeText={(v) => setPin(v.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  error={error}
+                  autoFocus
+                  palette={palette}
+                />
+                <Button label="Unlock" onPress={() => void verifyPin()} loading={busy} disabled={pin.length !== 6} />
+                <Button
+                  label="Back to the code"
+                  variant="ghost"
+                  onPress={() => {
+                    setStep("otp");
+                    setPin("");
+                    setError(null);
+                  }}
+                />
               </>
             )}
           </CardBox>

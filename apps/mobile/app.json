@@ -9,7 +9,11 @@
     "scheme": "convo",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.convo.app"
+      "bundleIdentifier": "com.convo.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Convo uses the microphone for voice and video calls.",
+        "NSCameraUsageDescription": "Convo uses the camera for video calls."
+      }
     },
     "android": {
       "package": "com.convo.app",
@@ -20,11 +24,21 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["CAMERA", "READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO", "POST_NOTIFICATIONS"]
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-secure-store"]
+    "plugins": [
+      "expo-secure-store",
+      "expo-video"
+    ]
   }
 }
