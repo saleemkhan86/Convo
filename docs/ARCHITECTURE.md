@@ -398,12 +398,26 @@ contracts and business logic where practical" with the least duplication.
   (`EXTERNAL_EMAIL_DAILY_LIMIT`), queue-based sending, OTP-verified
   identities only.
 
-## 5. Realtime (Phase 2 design)
+## 5. Realtime (shipped)
 
-WebSocket gateway planned on Fastify (`@fastify/websocket`), topic per
-conversation; delivery/read receipts via `message_receipts`; client-generated
-`clientMessageId` gives idempotent retries (unique per sender) so reconnects
-never duplicate messages (spec §22–23).
+The gateway is live on Fastify (`@fastify/websocket`, `apps/api/src/routes/ws.ts`):
+`/ws?token=<access JWT>` is **downstream-only** — every write still goes through
+the REST routes, so the socket never needs to be a command channel. A single
+`RealtimeHub` abstraction (`services/realtime.ts`) has two implementations:
+`InMemoryHub` for one process and `RedisHub` for several, which pub/subs on
+per-user channels (`<prefix>user:<id>`) and tags each payload with the publishing
+node's id so a node ignores its own echo.
+
+Reconnect correctness does not depend on the socket: `Message.sequenceNumber` is
+unique per conversation, and clients pass their last one to
+`GET /sync/:conversationId?afterSequence=N` or `POST /sync/batch` to refill any
+gap. Client-generated `clientMessageId` (unique per sender) keeps retries
+idempotent, so a resend never duplicates a message (spec §22–23).
+
+Two known limitations, both deliberate: `isOnline` is answered from the local
+hub only, so presence is per node rather than fleet-wide; and the socket
+verifies the JWT's `sub` but not `sid`, so revoking a session does not drop that
+session's existing connection.
 
 ## 6. Clients
 

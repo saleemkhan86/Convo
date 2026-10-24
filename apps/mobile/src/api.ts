@@ -363,7 +363,7 @@ export const api = {
   applyToGroup: (id: string) =>
     request<{ pending: boolean }>(`/groups/${id}/apply`, { method: "POST", body: {}, auth: true }),
   joinByCode: (code: string) =>
-    request<GroupDetail>(`/groups/join/${code}`, { auth: true }),
+    request<GroupDetail>("/groups/join", { method: "POST", body: { code }, auth: true }),
   discoverGroups: (q: string) =>
     request<{ groups: GroupList["groups"] }>(`/groups/discover${query({ q })}`, { auth: true }),
   revokeInvite: (id: string) =>
@@ -448,9 +448,10 @@ export function currentAccessToken(): string | null {
 }
 
 /**
- * Server media URLs are built from APP_URL, which points at localhost in dev —
- * unreachable from a device/emulator. Rebase them onto the API host the app
- * actually talks to, keeping the signed token query intact.
+ * In development the API mints media URLs on localhost, which is unreachable
+ * from a device/emulator. Rebase them onto the API host the app actually talks
+ * to, keeping the signed token query intact. Production URLs already point at
+ * the public API origin and pass through.
  */
 export function resolveMediaUrl(url: string | null): string | null {
   if (!url) return null;

@@ -174,3 +174,18 @@ describe("starredMessageListSchema", () => {
     expect(starredMessageListSchema.safeParse({ items: [] }).success).toBe(false);
   });
 });
+
+describe("messageSchema sequence number", () => {
+  it("defaults to 0 for payloads written before the realtime sequence landed", () => {
+    expect(messageSchema.parse(messageBase).sequenceNumber).toBe(0);
+  });
+
+  it("keeps a sequence number when the server sends one", () => {
+    expect(messageSchema.parse({ ...messageBase, sequenceNumber: 42 }).sequenceNumber).toBe(42);
+  });
+
+  it("rejects a negative or fractional sequence", () => {
+    expect(messageSchema.safeParse({ ...messageBase, sequenceNumber: -1 }).success).toBe(false);
+    expect(messageSchema.safeParse({ ...messageBase, sequenceNumber: 1.5 }).success).toBe(false);
+  });
+});

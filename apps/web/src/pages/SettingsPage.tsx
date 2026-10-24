@@ -175,6 +175,11 @@ export function SettingsPage() {
             <Button variant="danger" onClick={() => void signOut()}>Sign out</Button>
           </Card>
         </section>
+
+        <p className="px-1 pb-2 text-center text-[11px] leading-relaxed text-ink-400">
+          fawzxenon.com is Convo's partner services company and also provides the
+          convo.fawzxenon.com domain. Convo is an independent application and company.
+        </p>
       </div>
     </div>
   );

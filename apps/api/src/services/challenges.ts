@@ -4,6 +4,7 @@ import type { Config } from "../config.js";
 import type { EmailProvider } from "../email/index.js";
 import { AppError } from "../lib/errors.js";
 import { generateOtp, hashCode, verifyCodeHash } from "../lib/otp.js";
+import type { SmsProvider } from "../sms/index.js";
 
 export interface ChallengeContext {
   ip?: string;
@@ -15,6 +16,12 @@ export interface CreatedChallenge {
   devOtp?: string;
 }
 
+/** Outbound transports a code can be dispatched through (spec §14, §3). */
+export interface ChallengeDispatch {
+  email: EmailProvider;
+  sms: SmsProvider;
+}
+
 /**
  * Creates an OTP challenge for a target (phone E.164 or lowercase email).
  * Enforces a resend cooldown, expires previous open challenges for the same
@@ -23,7 +30,7 @@ export interface CreatedChallenge {
 export async function createChallenge(
   db: PrismaClient,
   config: Config,
-  email: EmailProvider,
+  dispatch: ChallengeDispatch,
   opts: {
     channel: ChallengeChannel;
     purpose: ChallengePurpose;
@@ -70,7 +77,7 @@ export async function createChallenge(
     });
   });
 
-  await dispatchCode(config, email, challenge.id, opts.channel, opts.target, code, opts.ctx);
+  await dispatchCode(config, dispatch, challenge.id, opts.channel, opts.target, code, opts.ctx);
 
   return {
     challengeId: challenge.id,
@@ -81,7 +88,7 @@ export async function createChallenge(
 
 async function dispatchCode(
   config: Config,
-  email: EmailProvider,
+  dispatch: ChallengeDispatch,
   challengeId: string,
   channel: ChallengeChannel,
   target: string,
@@ -89,7 +96,7 @@ async function dispatchCode(
   ctx?: ChallengeContext,
 ): Promise<void> {
   if (channel === "EMAIL") {
-    await email.sendEmail({
+    await dispatch.email.sendEmail({
       to: [target],
       subject: `${code} is your Convo verification code`,
       text: `Your Convo verification code is ${code}. It expires in ${Math.round(config.OTP_TTL_SECONDS / 60)} minutes. If you didn't request this, you can safely ignore this email.`,
@@ -97,9 +104,11 @@ async function dispatchCode(
     });
     return;
   }
-  // SMS delivery requires an SMS provider (Twilio/MSG91/etc.) — see docs/TODO.md.
-  // In development the code is logged and (optionally) exposed via DEV_EXPOSE_OTP.
-  console.log(`[auth] SMS OTP for ${target} (challenge ${challengeId}, ip ${ctx?.ip ?? "?"}): ${code}`);
+  await dispatch.sms.sendSms({
+    to: target,
+    body: `${code} is your Convo verification code. It expires in ${Math.round(config.OTP_TTL_SECONDS / 60)} minutes.`,
+    ref: { challengeId, ip: ctx?.ip },
+  });
 }
 
 function verificationEmailHtml(code: string, ttlSeconds: number): string {

@@ -65,10 +65,14 @@ export async function groupRoutes(app: FastifyInstance, deps: AppDeps): Promise<
     return { groups: await discoverPublicGroups(svc, requireUserId(request), q) };
   });
 
-  app.get("/groups/join/:code", async (request) => {
-    const { code } = request.params as { code: string };
-    return joinByCode(svc, requireUserId(request), code);
-  });
+  app.post(
+    "/groups/join",
+    { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
+    async (request) => {
+      const { code } = parse(joinByCodeRequestSchema, request.body);
+      return joinByCode(svc, requireUserId(request), code);
+    },
+  );
 
   app.get("/groups/:id", async (request) => {
     const { id } = request.params as { id: string };

@@ -385,7 +385,7 @@ The last sub-phase of the WhatsApp-parity push (`docs/FEATURE-PARITY.md`):
       `EmailProvider`
 - [ ] Subtle Convo branding footer on outgoing external mail (spec §12)
 
-## Phase 5 — Attachments, settings, remaining search
+## Phase 5 carry-over — Attachments, settings, remaining search
 - [x] Object storage + expiring private download URLs (delivered in Phase 4B for
       statuses; Supabase service-role key stays server-side)
 - [ ] MIME validation, size limits, malware scanning pipeline
@@ -409,13 +409,13 @@ The last sub-phase of the WhatsApp-parity push (`docs/FEATURE-PARITY.md`):
 - [ ] Notification prefs per conversation + global, storage management and
       account recovery flows (spec §34) — **5G**
 
-## Phase 6 — Platform polish
+## Phase 7 — Platform polish
 - [ ] Android: push, background sync, camera/gallery pickers, deep links
       (`convo://` scheme registered), share sheet, tablet layouts
 - [ ] Web: keyboard shortcuts, PWA install, notification permissions
 - [ ] Multi-device session sync, message history pagination (cursor-based)
 
-## Phase 7 — Hardening & launch
+## Phase 8 — Hardening & launch
 - [ ] Pen-test pass: enumeration, IDOR, rate-limit evasion, abuse flows
 - [ ] Sending reputation controls: warm-up limits for new accounts,
       suspicious-activity detection, device/IP throttling (spec §30)
@@ -424,7 +424,9 @@ The last sub-phase of the WhatsApp-parity push (`docs/FEATURE-PARITY.md`):
 - [ ] CI/CD, staged environments, backups/PITR for Postgres
 
 ## Known simplifications to revisit
-- [ ] SMS OTP delivery adapter (Twilio/MSG91) — currently dev-logged only
+- [ ] SMS OTP delivery adapter (Twilio/MSG91) — the `SmsProvider` seam now exists
+      (`apps/api/src/sms/`); development logs the code, production returns a 503
+      until an adapter is implemented in `createSmsProvider`
 - [ ] Web token storage: evaluate httpOnly-cookie sessions vs localStorage
 - [ ] Replace hand-rolled mobile navigation with expo-router when screens grow
 - [ ] Account merge/support flow for "identity already on another account"

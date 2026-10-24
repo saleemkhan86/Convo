@@ -435,7 +435,7 @@ export const api = {
   applyToGroup: (id: string) =>
     request<{ pending: boolean }>(`/groups/${id}/apply`, { method: "POST", body: {}, auth: true }),
   joinByCode: (code: string) =>
-    request<GroupDetail>(`/groups/join/${code}`, { auth: true }),
+    request<GroupDetail>("/groups/join", { method: "POST", body: { code }, auth: true }),
   discoverGroups: (q: string) =>
     request<{ groups: GroupList["groups"] }>(`/groups/discover${query({ q })}`, { auth: true }),
   revokeInvite: (id: string) =>

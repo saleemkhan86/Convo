@@ -20,6 +20,7 @@ import { mediaRoutes } from "./routes/media.js";
 import { meRoutes } from "./routes/me.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { statusRoutes } from "./routes/statuses.js";
+import { syncRoutes } from "./routes/sync.js";
 import { wsRoutes } from "./routes/ws.js";
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -47,7 +48,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(rateLimit, {
     max: 300,
     timeWindow: "1 minute",
-    allowList: ["127.0.0.1", "::1"],
+    // Loopback exemption is a local-dev convenience only. `trustProxy` is off
+    // outside production, so every peer then looks like 127.0.0.1 — keeping the
+    // exemption in production would let anyone behind a local proxy walk past
+    // the limiter entirely.
+    allowList: deps.config.isProduction ? [] : ["127.0.0.1", "::1"],
     errorResponseBuilder: () => ({
       error: {
         code: ApiErrorCode.RateLimited,
@@ -97,6 +102,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(contactRoutes, deps);
   await app.register(groupRoutes, deps);
   await app.register(statusRoutes, deps);
+  await app.register(syncRoutes, deps);
   await app.register(callRoutes, deps);
   await app.register(mediaRoutes, deps);
   await app.register(giphyRoutes, deps);

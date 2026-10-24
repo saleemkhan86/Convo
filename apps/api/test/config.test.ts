@@ -34,4 +34,18 @@ describe("loadConfig", () => {
     const config = loadConfig({ ...base, DEV_EXPOSE_OTP: "true" });
     expect(config.DEV_EXPOSE_OTP).toBe(true);
   });
+
+  it("defaults API_PUBLIC_URL to the local API port in development", () => {
+    expect(loadConfig(base).API_PUBLIC_URL).toBe("http://localhost:4000");
+    expect(loadConfig({ ...base, PORT: "4100" }).API_PUBLIC_URL).toBe("http://localhost:4100");
+  });
+
+  it("requires API_PUBLIC_URL in production", () => {
+    expect(() => loadConfig({ ...base, NODE_ENV: "production" })).toThrow(/API_PUBLIC_URL/);
+  });
+
+  it("trims trailing slashes from API_PUBLIC_URL", () => {
+    const config = loadConfig({ ...base, API_PUBLIC_URL: "https://api.example.com/" });
+    expect(config.API_PUBLIC_URL).toBe("https://api.example.com");
+  });
 });

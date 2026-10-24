@@ -33,7 +33,7 @@ async function handleSocket(
   app: FastifyInstance,
   deps: AppDeps,
   socket: WebSocket,
-  query: { token?: string },
+  query: { token?: string; deviceId?: string },
 ): Promise<void> {
   let payload: { sub?: string };
   try {
@@ -52,8 +52,9 @@ async function handleSocket(
     return;
   }
   const userId = user.id;
+  const deviceId = query.deviceId ?? `ws-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-  deps.hub.add(userId, socket);
+  deps.hub.add(userId, deviceId, socket);
   socket.send(JSON.stringify({ type: "ready", userId }));
 
   socket.on("message", (raw: Buffer | string) => {

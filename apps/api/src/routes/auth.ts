@@ -90,5 +90,5 @@ export async function authRoutes(app: FastifyInstance, deps: AppDeps): Promise<v
 }
 
 function depsToAuth(deps: AppDeps, app: FastifyInstance): AuthDeps {
-  return { db: deps.db, config: deps.config, email: deps.email, jwt: app };
+  return { db: deps.db, config: deps.config, email: deps.email, sms: deps.sms, jwt: app };
 }

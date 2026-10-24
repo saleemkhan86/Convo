@@ -185,6 +185,12 @@ export const messageSchema = z.object({
   conversationId: z.string(),
   senderId: z.string().nullable(),
   clientMessageId: z.string(),
+  /**
+   * Per-conversation sequence number for ordering (Stage 3 realtime).
+   * Defaults so payloads written before Stage 3 (and queued offline outbox
+   * messages) still parse, matching the 5A/5B/5E field convention.
+   */
+  sequenceNumber: z.number().int().nonnegative().default(0),
   type: messageTypeSchema,
   body: z.string().nullable(),
   replyToId: z.string().nullable(),

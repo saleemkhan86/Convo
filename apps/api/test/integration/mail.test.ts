@@ -13,6 +13,7 @@ import type {
 import { buildApp } from "../../src/app";
 import { loadConfig } from "../../src/config";
 import { createEmailProvider } from "../../src/email/index";
+import { createSmsProvider } from "../../src/sms/index";
 import { createMediaStorage } from "../../src/media/index";
 import { InMemoryHub, type RealtimeHub, type SocketLike } from "../../src/services/realtime";
 
@@ -52,7 +53,7 @@ describe.skipIf(!TEST_DATABASE_URL)("mail integration", () => {
     } as NodeJS.ProcessEnv);
     db = new PrismaClient();
     hub = new SpyHub();
-    app = await buildApp({ config, db, email: createEmailProvider(config), media: createMediaStorage(config), hub });
+    app = await buildApp({ config, db, email: createEmailProvider(config), sms: createSmsProvider(config), media: createMediaStorage(config), hub });
     await app.ready();
 
     // Child tables first (FK order), then identities/users.

@@ -13,6 +13,7 @@
     "prisma:seed": "tsx --env-file=.env prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration:wipes-shared-db": "vitest run --config vitest.integration.config.ts",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "prisma": {
@@ -27,6 +28,7 @@
     "@fastify/websocket": "^11.3.1",
     "@prisma/client": "^6.1.0",
     "fastify": "^5.2.0",
+    "ioredis": "^6.0.0",
     "nodemailer": "^6.9.16",
     "web-push": "^3.6.7",
     "zod": "^3.24.1"

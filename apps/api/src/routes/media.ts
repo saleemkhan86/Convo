@@ -155,19 +155,25 @@ export function issueUrl(app: FastifyInstance, deps: AppDeps, reply: FastifyRepl
   return `${base}/media/${key}?token=${token}`;
 }
 
+/**
+ * Serializers have no request to derive an origin from, so they use the
+ * configured API origin. APP_URL is the web app's origin, where /media is not
+ * served (the SPA fallback answers with index.html).
+ */
 export function mediaDownloadUrl(app: FastifyInstance, deps: AppDeps, key: string): string {
   const token = app.jwt.sign(
     { media: key },
     { expiresIn: deps.config.MEDIA_URL_TTL_SECONDS },
   );
-  return `${deps.config.APP_URL}/media/${key}?token=${token}`;
+  return `${deps.config.API_PUBLIC_URL}/media/${key}?token=${token}`;
 }
 
 function resolveBaseUrl(deps: AppDeps, reply: FastifyReply): string {
-  // Behind the Vite proxy the client reaches us at its own origin; absolute
-  // API_URL would break same-origin image loading in dev.
-  if (!deps.config.isDev) return deps.config.APP_URL;
-  const host = reply.request.headers.host ?? "localhost:4000";
+  // In development, derive the origin from the request so a device or emulator
+  // reaching the API over the LAN gets a URL it can actually load. Production
+  // uses the configured public origin.
+  if (!deps.config.isDev) return deps.config.API_PUBLIC_URL;
+  const host = reply.request.headers.host ?? `localhost:${deps.config.PORT}`;
   const proto = reply.request.headers["x-forwarded-proto"] ?? "http";
   return `${proto as string}://${host}`;
 }

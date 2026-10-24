@@ -1,0 +1,46 @@
+name: CI
+
+# Unit tests + typechecks only. Nothing here can reach the shared database:
+# apps/api's default vitest config excludes test/integration/**, and no step
+# defines TEST_DATABASE_URL.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # @convo/shared is consumed as built output, so it must be compiled before
+      # anything typechecks or tests against it.
+      - run: pnpm --filter @convo/shared build
+
+      # Prisma client types are generated, not committed.
+      - run: pnpm --filter @convo/api prisma:generate
+
+      - name: Typecheck
+        run: pnpm -r --if-present run lint
+
+      - name: Unit tests
+        run: |
+          pnpm --filter @convo/shared test
+          pnpm --filter @convo/api test

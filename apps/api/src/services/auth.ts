@@ -7,12 +7,14 @@ import { AppError, unauthorized } from "../lib/errors.js";
 import { generateOpaqueToken, hashToken } from "../lib/tokens.js";
 import { toAccount, userWithIdentities, type UserWithIdentities } from "./account.js";
 import { createChallenge, verifyChallengeCode, type ChallengeContext } from "./challenges.js";
+import type { SmsProvider } from "../sms/index.js";
 import { consumeTwoFactorToken, startTwoFactorChallenge } from "./security.js";
 
 export interface AuthDeps {
   db: PrismaClient;
   config: Config;
   email: EmailProvider;
+  sms: SmsProvider;
   jwt: FastifyInstance;
 }
 
@@ -25,7 +27,7 @@ export async function requestPhoneOtp(
   phone: string,
   ctx: LoginContext,
 ) {
-  return createChallenge(deps.db, deps.config, deps.email, {
+  return createChallenge(deps.db, deps.config, deps, {
     channel: "PHONE",
     purpose: "LOGIN",
     target: phone,
@@ -38,7 +40,7 @@ export async function requestEmailOtp(
   email: string,
   ctx: LoginContext,
 ) {
-  return createChallenge(deps.db, deps.config, deps.email, {
+  return createChallenge(deps.db, deps.config, deps, {
     channel: "EMAIL",
     purpose: "LOGIN",
     target: email,

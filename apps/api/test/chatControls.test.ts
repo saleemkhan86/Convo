@@ -18,6 +18,7 @@ function row(overrides: Partial<Row> = {}): Row {
     conversationId: "c1",
     senderId: "u1",
     clientMessageId: "cm1",
+    sequenceNumber: 7,
     type: "TEXT",
     body: "hi",
     replyToId: null,
@@ -107,6 +108,8 @@ describe("serializeMessage star + receipt state", () => {
 
   it("produces a payload the shared contract accepts", () => {
     expect(messageSchema.parse(serializeMessage(row(), "u1", mediaUrl)).starredByMe).toBe(false);
+    // A dropped sequenceNumber would silently default to 0 and desync cursors.
+    expect(messageSchema.parse(serializeMessage(row(), "u1", mediaUrl)).sequenceNumber).toBe(7);
   });
 
   it("marks a status reply with its status id (Phase 5D)", () => {

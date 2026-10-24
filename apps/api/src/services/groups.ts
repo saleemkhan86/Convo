@@ -166,10 +166,18 @@ async function postSystemMessage(
   conversationId: string,
   body: string,
 ): Promise<void> {
+  // Get the next sequence number for this conversation (Stage 3: ordering).
+  const lastMessage = await deps.db.message.findFirst({
+    where: { conversationId },
+    orderBy: { sequenceNumber: "desc" },
+    select: { sequenceNumber: true },
+  });
+  const sequenceNumber = (lastMessage?.sequenceNumber ?? 0) + 1;
+
   // Serialized with an empty viewer id: a system line has no per-viewer state,
   // so the one payload is identical for every member.
   const message = await deps.db.message.create({
-    data: { conversationId, senderId: null, type: "SYSTEM", body },
+    data: { conversationId, senderId: null, type: "SYSTEM", body, sequenceNumber },
     include: messageInclude,
   });
   await deps.db.conversation.update({

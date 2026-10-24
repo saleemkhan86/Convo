@@ -3,6 +3,7 @@ import { ApiErrorCode, type Account } from "@convo/shared";
 import type { Config } from "../config.js";
 import type { EmailProvider } from "../email/index.js";
 import { AppError, conflict, forbidden } from "../lib/errors.js";
+import type { SmsProvider } from "../sms/index.js";
 import { toAccount, userWithIdentities, type UserWithIdentities } from "./account.js";
 import { createChallenge, verifyChallengeCode, type ChallengeContext } from "./challenges.js";
 
@@ -10,6 +11,7 @@ export interface IdentityDeps {
   db: PrismaClient;
   config: Config;
   email: EmailProvider;
+  sms: SmsProvider;
 }
 
 /**
@@ -49,7 +51,7 @@ export async function requestConnectEmail(
     );
   }
 
-  return createChallenge(deps.db, deps.config, deps.email, {
+  return createChallenge(deps.db, deps.config, deps, {
     channel: "EMAIL",
     purpose: "CONNECT_IDENTITY",
     target: email,
@@ -131,7 +133,7 @@ export async function requestConnectPhone(
     );
   }
 
-  return createChallenge(deps.db, deps.config, deps.email, {
+  return createChallenge(deps.db, deps.config, deps, {
     channel: "PHONE",
     purpose: "CONNECT_IDENTITY",
     target: phone,

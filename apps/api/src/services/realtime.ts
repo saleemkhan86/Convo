@@ -12,7 +12,7 @@ export interface SocketLike {
 const OPEN = 1;
 
 export interface RealtimeHub {
-  add(userId: string, socket: SocketLike): void;
+  add(userId: string, deviceId: string, socket: SocketLike): void;
   remove(userId: string, socket: SocketLike): void;
   isOnline(userId: string): boolean;
   publishToUsers(userIds: Iterable<string>, event: WsServerEvent): void;
@@ -51,14 +51,16 @@ export class InMemoryHub implements RealtimeHub {
   private readonly watchersByTarget = new Map<string, Set<SocketLike>>();
   private readonly targetsByWatcher = new Map<SocketLike, Set<string>>();
   private readonly userBySocket = new Map<SocketLike, string>();
+  private readonly deviceBySocket = new Map<SocketLike, string>();
   private readonly presenceVisible?: PresenceVisible;
 
   constructor(opts: HubOptions = {}) {
     this.presenceVisible = opts.presenceVisible;
   }
 
-  add(userId: string, socket: SocketLike): void {
+  add(userId: string, deviceId: string, socket: SocketLike): void {
     this.userBySocket.set(socket, userId);
+    this.deviceBySocket.set(socket, deviceId);
     let set = this.sockets.get(userId);
     if (!set) {
       set = new Set();
@@ -71,6 +73,7 @@ export class InMemoryHub implements RealtimeHub {
 
   remove(userId: string, socket: SocketLike): void {
     this.userBySocket.delete(socket);
+    this.deviceBySocket.delete(socket);
     const set = this.sockets.get(userId);
     if (!set) return;
     set.delete(socket);

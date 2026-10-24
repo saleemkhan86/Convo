@@ -219,6 +219,7 @@ export function serializeMessage(m: MessageFull, viewerId: string, mediaUrl: Med
     conversationId: m.conversationId,
     senderId: m.senderId,
     clientMessageId: m.clientMessageId,
+    sequenceNumber: m.sequenceNumber,
     type: m.type as Message["type"],
     body: m.body,
     replyToId: m.replyToId,
@@ -1093,7 +1094,7 @@ async function deliverNewMessage(
   deps: ConversationDeps,
   senderId: string,
   conversationId: string,
-  data: Omit<Prisma.MessageUncheckedCreateInput, "conversationId" | "senderId">,
+  data: Omit<Prisma.MessageUncheckedCreateInput, "conversationId" | "senderId" | "sequenceNumber">,
   attachments: ResolvedAttachment[],
 ): Promise<Message> {
   const { db, hub, mediaUrl } = deps;
@@ -1108,8 +1109,18 @@ async function deliverNewMessage(
   const blockedSet = await blockedRecipients(db, senderId, others.map((o) => o.userId));
   const recipients = others.map((o) => o.userId).filter((id) => !blockedSet.has(id));
 
+  // Get the next sequence number for this conversation (Stage 3: ordering).
+  const lastMessage = await db.message.findFirst({
+    where: { conversationId },
+    orderBy: { sequenceNumber: "desc" },
+    select: { sequenceNumber: true },
+  });
+  const sequenceNumber = (lastMessage?.sequenceNumber ?? 0) + 1;
+
   const created = await db.$transaction(async (tx) => {
-    const message = await tx.message.create({ data: { ...data, conversationId, senderId } });
+    const message = await tx.message.create({
+      data: { ...data, conversationId, senderId, sequenceNumber },
+    });
     if (attachments.length > 0) {
       // Rows reference the stored bytes; re-sending and forwarding share them.
       await tx.attachment.createMany({
@@ -1120,6 +1131,23 @@ async function deliverNewMessage(
       await tx.messageReceipt.createMany({
         data: recipients.map((id) => ({ messageId: message.id, userId: id })),
       });
+
+      // Stage 5: Track per-device delivery. Create a delivery record for each
+      // active device of each recipient so we know which devices have received
+      // the message and can sync accurately on reconnection.
+      const recipientDevices = await tx.device.findMany({
+        where: { userId: { in: recipients }, status: "ACTIVE" },
+        select: { id: true, userId: true },
+      });
+      if (recipientDevices.length > 0) {
+        await tx.deviceMessageDelivery.createMany({
+          data: recipientDevices.map((d) => ({
+            deviceId: d.id,
+            messageId: message.id,
+            sequenceNumber,
+          })),
+        });
+      }
     }
     // "Delete chat for me" is temporary: new activity brings the chat back.
     await tx.conversationMember.updateMany({
@@ -1145,6 +1173,18 @@ async function deliverNewMessage(
       where: { messageId: created.id, userId: { in: onlineIds } },
       data: { deliveredAt },
     });
+
+    // Stage 5: Mark per-device deliveries as delivered for online users.
+    const onlineDevices = await db.device.findMany({
+      where: { userId: { in: onlineIds }, status: "ACTIVE" },
+      select: { id: true },
+    });
+    if (onlineDevices.length > 0) {
+      await db.deviceMessageDelivery.updateMany({
+        where: { deviceId: { in: onlineDevices.map((d) => d.id) }, messageId: created.id },
+        data: { deliveredAt },
+      });
+    }
   }
   const full = await db.message.findUniqueOrThrow({
     where: { id: created.id },

@@ -228,6 +228,9 @@ model Device {
   id        String   @id @default(cuid())
   userId    String
   platform  DevicePlatform
+  /// Human-readable label ("Pixel 8", "Chrome on Windows"). Shown in the
+  /// device list so the user can tell devices apart.
+  deviceName String? @db.VarChar(128)
   /// Native push (FCM/APNs) registration token, from Expo.
   pushToken String?  @db.VarChar(512)
   /// Browser Push API endpoint URL — the natural key of a web subscription.
@@ -237,13 +240,49 @@ model Device {
   /// endpoint — a leaked subscription lets someone push to your device.
   pushKeys    Json?
   appVersion String? @db.VarChar(32)
+  /// Per-device status. REVOKED devices cannot connect or receive push.
+  status     DeviceStatus @default(ACTIVE)
+  /// Ed25519/X25519 public key for future E2EE. The server stores but never
+  /// reads the private half; clients register it at device-setup time.
+  publicKey  Bytes?
+  /// Sync cursor: the latest message `createdAt` this device has received.
+  /// On reconnect, the server queries messages newer than this to fill gaps.
+  lastSyncedAt DateTime @default(now())
   lastSeenAt DateTime @default(now())
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries DeviceMessageDelivery[]
 
   @@unique([userId, pushToken])
   @@unique([userId, pushEndpoint])
+}
+
+/// Per-device message delivery tracking. Each row records that a specific
+/// device has received a specific message. This enables:
+/// - Accurate delivery receipts (message shows "delivered" only when all recipient devices have it)
+/// - Per-device sync cursors (each device can resume from where it left off)
+/// - Offline queue management (know which devices still need which messages)
+model DeviceMessageDelivery {
+  id          String   @id @default(cuid())
+  deviceId    String
+  messageId   String
+  sequenceNumber Int
+  deliveredAt DateTime?
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  device  Device  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, messageId])
+  @@index([deviceId, sequenceNumber])
+  @@index([messageId])
+}
+
+enum DeviceStatus {
+  ACTIVE
+  REVOKED
 }
 
 enum DevicePlatform {
@@ -444,6 +483,8 @@ model Message {
   senderId       String?  // null for system messages
   /// Client-generated UUID enabling idempotent retries (spec §22).
   clientMessageId String  @default(cuid())
+  /// Per-conversation sequence number for ordering (Stage 3 realtime migration).
+  sequenceNumber  Int
   type           MessageType @default(TEXT)
   body           String?  @db.Text
   replyToId      String?
@@ -487,8 +528,10 @@ model Message {
   mentions     MessageMention[]
   pin          MessagePin?
   statusReply  Status?          @relation("StatusReplies", fields: [statusReplyId], references: [id], onDelete: SetNull)
+  deliveries   DeviceMessageDelivery[]
 
   @@unique([senderId, clientMessageId])
+  @@unique([conversationId, sequenceNumber])
   @@index([conversationId, createdAt])
   @@index([conversationId, type])
   @@index([forwardedFromUserId])

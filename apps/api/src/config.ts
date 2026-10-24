@@ -5,6 +5,13 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().default(4000),
   HOST: z.string().default("0.0.0.0"),
   APP_URL: z.string().url().default("http://localhost:5173"),
+  /**
+   * Origin the API is reachable at. Signed media URLs are absolute, so they
+   * must be built from here and not from APP_URL (the web app's origin, where
+   * /media does not exist). Required in production; defaults to the local port
+   * in development.
+   */
+  API_PUBLIC_URL: z.string().url().optional(),
   CORS_ORIGIN: z.string().default("http://localhost:5173,http://localhost:8081"),
 
   DATABASE_URL: z.string().min(1),
@@ -70,6 +77,12 @@ const envSchema = z.object({
   /** How often the server finalises past-grace account deletions. */
   DELETION_SWEEP_SECONDS: z.coerce.number().int().min(60).default(3600),
 
+  // Redis (realtime coordination). When unset the server falls back to the
+  // in-memory hub — fine for single-process dev, insufficient for multi-node.
+  REDIS_URL: z.string().optional(),
+  /** Key prefix so multiple apps can share one Redis without collisions. */
+  REDIS_PREFIX: z.string().default("convo:"),
+
   // Push (Phase 5G). Everything here stays server-side; the only key a client
   // receives is the VAPID *public* one, which is public by design. With no
   // credentials configured the app still works — alerts land in the centre and
@@ -86,7 +99,12 @@ const envSchema = z.object({
   VAPID_SUBJECT: z.string().default("mailto:push@convo.local"),
 });
 
-export type Config = z.infer<typeof envSchema> & { isProduction: boolean; isDev: boolean };
+export type Config = Omit<z.infer<typeof envSchema>, "API_PUBLIC_URL"> & {
+  /** Always resolved: env value, else the local API port in development. */
+  API_PUBLIC_URL: string;
+  isProduction: boolean;
+  isDev: boolean;
+};
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = envSchema.safeParse(env);
@@ -96,6 +114,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   if (parsed.data.NODE_ENV === "production" && parsed.data.DEV_EXPOSE_OTP) {
     throw new Error("DEV_EXPOSE_OTP must not be enabled in production");
+  }
+  if (parsed.data.NODE_ENV === "production" && !parsed.data.API_PUBLIC_URL) {
+    throw new Error(
+      "API_PUBLIC_URL is required in production (e.g. https://api.example.com) so signed media URLs point at the API",
+    );
   }
   if (
     parsed.data.MEDIA_STORAGE_PROVIDER === "supabase" &&
@@ -109,8 +132,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (Boolean(parsed.data.VAPID_PUBLIC_KEY) !== Boolean(parsed.data.VAPID_PRIVATE_KEY)) {
     throw new Error("Web push needs both VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY (or neither)");
   }
+  const apiPublicUrl = (parsed.data.API_PUBLIC_URL ?? `http://localhost:${parsed.data.PORT}`)
+    .replace(/\/+$/, "");
   return {
     ...parsed.data,
+    API_PUBLIC_URL: apiPublicUrl,
     isProduction: parsed.data.NODE_ENV === "production",
     isDev: parsed.data.NODE_ENV === "development",
   };

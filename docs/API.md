@@ -420,7 +420,7 @@ admins only, and `inviteRevokedAt` invalidates every previously shared link.
 | POST | `/groups` | `{ name, about?, avatarUrl?, avatarStorageKey?, visibility="PRIVATE", phones?: E.164[] }` | `GroupDetail` |
 | GET | `/groups` | `?cursor?&limit=50` | `{ groups: GroupSummary[], nextCursor }` |
 | GET | `/groups/discover` | `?q=<1–50>&limit=20` (1–50) | `{ groups: GroupSummary[] }` — PUBLIC only |
-| GET | `/groups/join/:code` | – | `GroupDetail` (redeems an invite link) |
+| POST | `/groups/join` | `{ code }` (8–64, 30/min) | `GroupDetail` (redeems an invite link) |
 | GET | `/groups/:id` | – | `GroupDetail` |
 | PATCH | `/groups/:id` | `{ name?, about?, avatarUrl?, avatarStorageKey?: string \| null, settings?: Partial<GroupSettings> }` | `GroupDetail` |
 | DELETE | `/groups/:id` | – | `{ ok: true }` |
@@ -537,7 +537,9 @@ Semantics:
   (`{ media: key }`, `MEDIA_URL_TTL_SECONDS`, default 6h). The token is not an
   access token — it authenticates the file, nothing else — so plain
   `<img>`/`<video>`/`expo-image` tags work without headers. A token presented
-  against a different key returns 403.
+  against a different key returns 403. URLs are absolute and built from
+  `API_PUBLIC_URL` (the API origin, required in production), never from
+  `APP_URL` — the web app does not serve `/media`.
 - Provider is pluggable: `MEDIA_STORAGE_PROVIDER=local` writes under
   `.data/media` (sharded by key prefix, keys validated against path traversal);
   `=supabase` uses Supabase Storage with the **service-role key held only
