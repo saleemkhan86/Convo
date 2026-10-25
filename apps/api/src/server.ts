@@ -8,6 +8,7 @@ import { InMemoryHub } from "./services/realtime.js";
 import { RedisHub } from "./services/redisHub.js";
 import { fieldVisibleToUser } from "./services/privacy.js";
 import { sweepAllExpired } from "./services/conversations.js";
+import { sweepExpiredFeedPosts } from "./services/feed.js";
 import { callService, sweepStuckRings } from "./services/calls.js";
 import { sweepExpiredAccounts } from "./services/security.js";
 import { createPushTransport } from "./services/push.js";
@@ -79,6 +80,10 @@ async function main(): Promise<void> {
           notifyUser(notifySvc, { userId, type, title, body, actorId, conversationId, callId }),
       }).catch(() => {});
     }, config.CALL_SWEEP_SECONDS * 1000),
+    // Feed: prune expired posts and their media objects every hour.
+    setInterval(() => {
+      void sweepExpiredFeedPosts(db, media).catch(() => {});
+    }, config.FEED_SWEEP_SECONDS * 1000),
   ];
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {

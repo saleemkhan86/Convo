@@ -63,14 +63,15 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     }
 
     function connect() {
-      if (!currentAccessToken()) {
+      const token = currentAccessToken();
+      if (!token) {
         setStatus("closed");
         return;
       }
       const url = realtimeUrl();
       if (!url) return;
       setStatus("connecting");
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(url, [`bearer.${token}`]);
       wsRef.current = ws;
 
       ws.onopen = () => {

@@ -10,6 +10,7 @@ import { authRoutes } from "./routes/auth.js";
 import { callRoutes } from "./routes/calls.js";
 import { contactRoutes } from "./routes/contacts.js";
 import { conversationRoutes } from "./routes/conversations.js";
+import { feedRoutes } from "./routes/feed.js";
 import { folderRoutes } from "./routes/folders.js";
 import { groupRoutes } from "./routes/groups.js";
 import { giphyRoutes } from "./routes/giphy.js";
@@ -27,6 +28,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: deps.config.isProduction ? "info" : "debug",
+      // Redact sensitive query parameters from request logs (defense-in-depth).
+      redact: {
+        paths: ["req.query.token", "req.query.tokens", "req.headers.authorization"],
+        censor: "[REDACTED]",
+      },
     },
     trustProxy: deps.config.isProduction,
   });
@@ -100,6 +106,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(meRoutes, deps);
   await app.register(conversationRoutes, deps);
   await app.register(contactRoutes, deps);
+  await app.register(feedRoutes, deps);
   await app.register(groupRoutes, deps);
   await app.register(statusRoutes, deps);
   await app.register(syncRoutes, deps);

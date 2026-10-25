@@ -19,13 +19,18 @@ const UNAUTHORIZED_CLOSE = 4401;
  * typing, presence) flow over the socket; sending messages stays on HTTP so
  * retries are idempotent even across reconnects.
  *
- * Auth: the access token is passed as `?token=` because browsers cannot set
- * headers on WebSocket handshakes. The token is short-lived (15 min); clients
- * reconnect with a refreshed token on 4401.
+ * Auth: the access token is passed via the `Sec-WebSocket-Protocol` header as
+ * `bearer.<token>`. Browsers can set this header via the WebSocket constructor's
+ * subprotocol argument, avoiding query-string tokens that leak into logs.
+ * Clients reconnect with a refreshed token on 4401.
  */
 export async function wsRoutes(app: FastifyInstance, deps: AppDeps): Promise<void> {
   app.get("/ws", { websocket: true }, (socket: WebSocket, request) => {
-    void handleSocket(app, deps, socket, request.query as { token?: string });
+    const protocol = request.headers["sec-websocket-protocol"];
+    const token = typeof protocol === "string" && protocol.startsWith("bearer.")
+      ? protocol.slice(7)
+      : undefined;
+    void handleSocket(app, deps, socket, { token, deviceId: (request.query as { deviceId?: string }).deviceId });
   });
 }
 

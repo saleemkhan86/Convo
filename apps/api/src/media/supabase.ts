@@ -49,4 +49,15 @@ export class SupabaseStorage implements MediaStorage {
     const mimeType = res.headers.get("content-type") ?? "application/octet-stream";
     return { body: Buffer.from(await res.arrayBuffer()), mimeType };
   }
+
+  async delete(key: string): Promise<void> {
+    if (!/^[a-f0-9-]+$/i.test(key)) return;
+    const res = await fetch(this.objectPath(key), {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${this.opts.serviceRoleKey}` },
+    });
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`Supabase delete failed (${res.status})`);
+    }
+  }
 }

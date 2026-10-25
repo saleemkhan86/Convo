@@ -101,6 +101,7 @@ model User {
   emailThreads        EmailThread[]
   emailMessages       EmailMessage[]
   statusesPosted      Status[]              @relation("StatusAuthor")
+  feedPosts           FeedPost[]            @relation("FeedPostAuthor")
   statusViews         StatusView[]
   statusesMuted       StatusMute[]          @relation("StatusMuter")
   statusMutesOfMe     StatusMute[]          @relation("StatusMuted")
@@ -590,6 +591,7 @@ model MediaObject {
   createdAt  DateTime @default(now())
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  feedPost FeedPost?
 
   @@index([ownerId, createdAt])
 }
@@ -783,6 +785,26 @@ model StatusMute {
 
   @@id([userId, authorId])
   @@index([userId])
+}
+
+// ─────────────────────── Feed (7-day auto-deleting posts) ─────────────────────
+
+/// Contact feed posts that auto-expire after 7 days. Simpler than Status:
+/// no audience privacy, no view tracking, just a chronological feed from
+/// contacts. Media is stored via the existing MediaObject pipeline.
+model FeedPost {
+  id         String   @id @default(cuid())
+  authorId   String
+  mediaKey   String   @unique // references MediaObject.storageKey
+  caption    String?  @db.Text
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime // default: now() + 7 days, set in application logic
+
+  author User @relation("FeedPostAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  media  MediaObject @relation(fields: [mediaKey], references: [storageKey], onDelete: Cascade)
+
+  @@index([authorId])
+  @@index([expiresAt])
 }
 
 // ─────────────────────────── Calls (Phase 5F) ────────────────────────────────

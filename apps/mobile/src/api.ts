@@ -431,6 +431,35 @@ export const api = {
     request<CallSummary>(`/calls/${callId}/hang-up`, { method: "POST", body: {}, auth: true }),
   setCallState: (callId: string, body: CallParticipantStateRequest) =>
     request<CallSummary>(`/calls/${callId}/me`, { method: "PATCH", body, auth: true }),
+
+  // ── Feed (7-day auto-deleting posts) ──
+  getFeed: () =>
+    request<{
+      posts: Array<{
+        id: string;
+        authorId: string;
+        authorName: string;
+        mediaUrl: string;
+        caption: string | null;
+        createdAt: string;
+        expiresAt: string;
+      }>;
+    }>("/feed", { auth: true }),
+  createFeedPost: (body: {
+    data: string;
+    mimeType: string;
+    fileName?: string;
+    caption?: string;
+  }) =>
+    request<{
+      id: string;
+      authorId: string;
+      authorName: string;
+      mediaUrl: string;
+      caption: string | null;
+      createdAt: string;
+      expiresAt: string;
+    }>("/feed", { method: "POST", body, auth: true }),
 };
 
 function query(params: Record<string, string | number | undefined>): string {
@@ -467,10 +496,9 @@ export function resolveMediaUrl(url: string | null): string | null {
 
 /**
  * WebSocket URL for the realtime gateway. API_BASE is always absolute on mobile,
- * so http(s) maps directly to ws(s).
+ * so http(s) maps directly to ws(s). The access token is sent via the
+ * Sec-WebSocket-Protocol header, not the URL.
  */
 export function realtimeUrl(): string {
-  const token = currentAccessToken();
-  if (!token) return "";
-  return `${API_BASE.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token)}`;
+  return `${API_BASE.replace(/^http/, "ws")}/ws`;
 }

@@ -461,6 +461,35 @@ export const api = {
   unmuteStatusAuthor: (authorId: string) =>
     request<{ ok: true }>(`/statuses/mute/${authorId}`, { method: "DELETE", auth: true }),
 
+  // ── Feed (7-day auto-deleting posts) ──
+  getFeed: () =>
+    request<{
+      posts: Array<{
+        id: string;
+        authorId: string;
+        authorName: string;
+        mediaUrl: string;
+        caption: string | null;
+        createdAt: string;
+        expiresAt: string;
+      }>;
+    }>("/feed", { auth: true }),
+  createFeedPost: (body: {
+    data: string;
+    mimeType: string;
+    fileName?: string;
+    caption?: string;
+  }) =>
+    request<{
+      id: string;
+      authorId: string;
+      authorName: string;
+      mediaUrl: string;
+      caption: string | null;
+      createdAt: string;
+      expiresAt: string;
+    }>("/feed", { method: "POST", body, auth: true }),
+
   uploadMedia: (file: File) => uploadMedia(file),
 };
 
@@ -509,11 +538,10 @@ export function currentAccessToken(): string | null {
 /**
  * WebSocket URL for the realtime gateway, derived from API_BASE so it works
  * through the Vite dev proxy (relative "/api") and in production (absolute).
+ * The access token is sent via the Sec-WebSocket-Protocol header, not the URL.
  */
 export function realtimeUrl(): string {
-  const token = currentAccessToken();
-  if (!token) return "";
-  const path = `/ws?token=${encodeURIComponent(token)}`;
+  const path = "/ws";
   if (API_BASE.startsWith("http")) {
     return API_BASE.replace(/^http/, "ws") + path;
   }

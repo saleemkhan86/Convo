@@ -76,6 +76,8 @@ const envSchema = z.object({
   EPHEMERAL_SWEEP_SECONDS: z.coerce.number().int().min(5).default(60),
   /** How often the server finalises past-grace account deletions. */
   DELETION_SWEEP_SECONDS: z.coerce.number().int().min(60).default(3600),
+  /** How often the server prunes expired feed posts (7-day auto-delete). */
+  FEED_SWEEP_SECONDS: z.coerce.number().int().min(60).default(3600),
 
   // Redis (realtime coordination). When unset the server falls back to the
   // in-memory hub — fine for single-process dev, insufficient for multi-node.

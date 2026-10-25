@@ -19,6 +19,8 @@ export interface MediaStorage {
   save(buffer: Buffer, mimeType: string): Promise<{ key: string }>;
   /** Read a stored object back. Null when the key does not exist. */
   fetch(key: string): Promise<{ body: Buffer; mimeType: string } | null>;
+  /** Delete a stored object. No-op if the key does not exist. */
+  delete(key: string): Promise<void>;
 }
 
 export function kindForMime(mimeType: string): MediaKind {

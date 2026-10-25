@@ -3,18 +3,20 @@ import { Link } from "react-router-dom";
 import { CallOverlay } from "../components/CallOverlay";
 import { CallsSection } from "../components/CallsSection";
 import { ChatsSection } from "../components/ChatsSection";
+import { FeedSection } from "../components/FeedSection";
 import { MailSection } from "../components/MailSection";
 import { StatusSection } from "../components/StatusSection";
-import { ChatIcon, ContactsIcon, MailIcon, PhoneIcon, PlusIcon, SearchIcon, SettingsIcon, StatusIcon } from "../components/icons";
+import { ChatIcon, ContactsIcon, FeedIcon, MailIcon, PhoneIcon, PlusIcon, SearchIcon, SettingsIcon, StatusIcon } from "../components/icons";
 import { Badge, Button, Logo, cx } from "../components/ui";
 import { useAuth } from "../lib/auth";
 
-type Section = "chats" | "mail" | "status" | "calls";
+type Section = "chats" | "mail" | "status" | "feed" | "calls";
 
 const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
   chats: { title: "Chats", subtitle: "Phone-number messaging" },
   mail: { title: "Mail", subtitle: "Email conversations" },
   status: { title: "Status", subtitle: "Updates that disappear" },
+  feed: { title: "Feed", subtitle: "Posts from your contacts" },
   calls: { title: "Calls", subtitle: "Voice and video history" },
 };
 
@@ -28,9 +30,11 @@ export function HomePage() {
   const chatsAvailable = account.capabilities.chats;
   const mailAvailable = account.capabilities.mail;
   const isStatus = section === "status";
+  const isFeed = section === "feed";
   // The call log is always open: it lists what already happened, and dialling
   // from it needs the same phone identity the chats do.
-  const noComposer = isStatus || section === "calls";
+  // Feed is read-only (no composer).
+  const noComposer = isStatus || isFeed || section === "calls";
   const activeAvailable = noComposer ? true : section === "chats" ? chatsAvailable : mailAvailable;
 
   return (
@@ -46,6 +50,7 @@ export function HomePage() {
           <NavItem icon={<MailIcon />} label="Mail" active={section === "mail"} onClick={() => setSection("mail")}
             badge={mailAvailable ? undefined : "Connect"} />
           <NavItem icon={<StatusIcon />} label="Status" active={section === "status"} onClick={() => setSection("status")} />
+          <NavItem icon={<FeedIcon />} label="Feed" active={section === "feed"} onClick={() => setSection("feed")} />
           <NavItem icon={<PhoneIcon />} label="Calls" active={section === "calls"} onClick={() => setSection("calls")} />
           <NavItem icon={<ContactsIcon />} label="Contacts" disabled soon />
           <Link to="/settings">
@@ -112,6 +117,8 @@ export function HomePage() {
             <ConnectIdentityPrompt section={section} />
           ) : isStatus ? (
             <StatusSection />
+          ) : isFeed ? (
+            <FeedSection />
           ) : section === "calls" ? (
             <CallsSection />
           ) : section === "chats" ? (
@@ -126,6 +133,7 @@ export function HomePage() {
           <TabButton icon={<ChatIcon />} label="Chats" active={section === "chats"} onClick={() => setSection("chats")} />
           <TabButton icon={<MailIcon />} label="Mail" active={section === "mail"} onClick={() => setSection("mail")} />
           <TabButton icon={<StatusIcon />} label="Status" active={section === "status"} onClick={() => setSection("status")} />
+          <TabButton icon={<FeedIcon />} label="Feed" active={section === "feed"} onClick={() => setSection("feed")} />
           <TabButton icon={<PhoneIcon />} label="Calls" active={section === "calls"} onClick={() => setSection("calls")} />
           <Link to="/settings" className="flex-1">
             <div className="flex flex-col items-center gap-1 py-2.5 text-ink-500">

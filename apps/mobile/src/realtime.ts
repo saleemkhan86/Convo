@@ -47,7 +47,8 @@ function scheduleReconnect() {
 }
 
 function connect() {
-  if (!currentAccessToken()) {
+  const token = currentAccessToken();
+  if (!token) {
     setStatus("closed");
     return;
   }
@@ -56,7 +57,7 @@ function connect() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
   setStatus("connecting");
-  const sock = new WebSocket(url);
+  const sock = new WebSocket(url, [`bearer.${token}`]);
   ws = sock;
 
   sock.onopen = () => {

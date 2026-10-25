@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { isAllowedMime, kindForMime, type MediaStorage, type StoredMedia } from "./provider.js";
@@ -47,6 +47,15 @@ export class LocalFileStorage implements MediaStorage {
       return { body, mimeType: mimeFromKey(key) };
     } catch {
       return null;
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    if (!this.isSafeKey(key)) return;
+    try {
+      await rm(this.pathFor(key), { force: true });
+    } catch {
+      // Ignore errors (file may not exist)
     }
   }
 

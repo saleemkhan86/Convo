@@ -5,13 +5,14 @@ import { useCallState } from "../calls";
 import { Button, CardBox, Heading, LogoMark, Muted, Screen, usePalette } from "../components/ui";
 import { CallsScreen } from "./CallsScreen";
 import { ChatsScreen } from "./ChatsScreen";
+import { FeedScreen } from "./FeedScreen";
 import { MailScreen } from "./MailScreen";
 import { StatusScreen } from "./StatusScreen";
 import { colors, radius, spacing } from "../theme";
 
-type Section = "chats" | "mail" | "status" | "calls";
+type Section = "chats" | "mail" | "status" | "feed" | "calls";
 
-const LABELS: Record<Section, string> = { chats: "Chats", mail: "Mail", status: "Status", calls: "Calls" };
+const LABELS: Record<Section, string> = { chats: "Chats", mail: "Mail", status: "Status", feed: "Feed", calls: "Calls" };
 
 export function HomeScreen({
   account,
@@ -40,10 +41,11 @@ export function HomeScreen({
   const [section, setSection] = useState<Section>("chats");
   const callSupported = useCallState().supported;
   const isStatus = section === "status";
+  const isFeed = section === "feed";
   const isCalls = section === "calls";
   const needsEmail = section === "mail";
   const available =
-    isStatus || (section === "mail" ? account.capabilities.mail : account.capabilities.chats);
+    isStatus || isFeed || (section === "mail" ? account.capabilities.mail : account.capabilities.chats);
 
   return (
     <Screen palette={palette}>
@@ -59,7 +61,7 @@ export function HomeScreen({
 
       {/* Section switcher */}
       <View style={{ flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg }}>
-        {(["chats", "mail", "status", "calls"] as Section[]).map((s) => (
+        {(["chats", "mail", "status", "feed", "calls"] as Section[]).map((s) => (
           <Pressable
             key={s}
             onPress={() => setSection(s)}
@@ -84,6 +86,10 @@ export function HomeScreen({
       {isStatus ? (
         <View style={{ flex: 1, paddingTop: spacing.md }}>
           <StatusScreen accountId={account.id} />
+        </View>
+      ) : isFeed ? (
+        <View style={{ flex: 1, paddingTop: spacing.md }}>
+          <FeedScreen />
         </View>
       ) : isCalls && available ? (
         <View style={{ flex: 1, paddingTop: spacing.md }}>
