@@ -48,4 +48,28 @@ describe("loadConfig", () => {
     const config = loadConfig({ ...base, API_PUBLIC_URL: "https://api.example.com/" });
     expect(config.API_PUBLIC_URL).toBe("https://api.example.com");
   });
+
+  it("derives the Google callback and Message-ID domain", () => {
+    const config = loadConfig({ ...base, APP_URL: "https://convo.example" });
+    expect(config.GOOGLE_REDIRECT_URI).toBe(
+      "http://localhost:4000/auth/google/callback",
+    );
+    expect(config.MAIL_MESSAGE_ID_DOMAIN).toBe("convo.example");
+    expect(config.MAIL_SYNC_PAGE_SIZE).toBe(100);
+  });
+
+  it("requires Google client id and secret together", () => {
+    expect(() => loadConfig({ ...base, GOOGLE_CLIENT_ID: "id" })).toThrow(
+      /GOOGLE_CLIENT_ID/,
+    );
+    expect(() =>
+      loadConfig({ ...base, GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret" }),
+    ).not.toThrow();
+  });
+
+  it("requires the previous token key and version together", () => {
+    expect(() =>
+      loadConfig({ ...base, MAIL_TOKEN_ENC_KEY_PREVIOUS: "old" }),
+    ).toThrow(/MAIL_TOKEN_KEY_VERSION_PREVIOUS/);
+  });
 });

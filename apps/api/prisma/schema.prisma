@@ -114,6 +114,7 @@ model User {
   reportsFiled        Report[]         @relation("Reporter")
   auditLogs           AuditLog[]
   emailSendUsage      EmailSendUsage[]
+  authHandoffs        AuthHandoff[]
 
   @@index([createdAt])
 }
@@ -170,9 +171,12 @@ model EmailIdentity {
   userId     String   @unique
   email      String   @unique @db.VarChar(320) // normalized lowercase
   verifiedAt DateTime @default(now())
+  /// How the address was proven: emailed OTP, or an OAuth provider grant.
+  verificationMethod EmailVerificationMethod @default(OTP)
   createdAt  DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection MailConnection?
 }
 
 /// OTP challenges for login (flows A–D) and identity linking (flow E).
@@ -913,6 +917,8 @@ model EmailThread {
   subject      String?  @db.VarChar(998)
   /// Stable thread key derived from the first Message-ID / References chain.
   threadKey    String
+  /// Provider-native thread id (Gmail threadId / Graph conversationId).
+  providerThreadId String? @db.VarChar(255)
   lastActivityAt DateTime @default(now())
   /// Owner-scoped read watermark; inbound messages after this are unread.
   lastReadAt   DateTime?
@@ -924,6 +930,7 @@ model EmailThread {
 
   @@unique([ownerId, threadKey])
   @@index([ownerId, lastActivityAt])
+  @@index([ownerId, providerThreadId])
 }
 
 model EmailThreadParticipant {
@@ -957,7 +964,12 @@ model EmailMessage {
   bodyHtml      String?  @db.Text
   /// Set when routed Convo-internal (spec §11) — mirrors the realtime message.
   convoMessageId String?
+  /// Which mailbox provider this message was synced from or sent through.
+  provider          MailProvider?
   providerMessageId String? @db.VarChar(255)
+  providerThreadId  String? @db.VarChar(255)
+  /// Inbound delivery-status notification (mailer-daemon / NDR).
+  isBounce      Boolean  @default(false)
   /// Client idempotency key for sends (spec §22).
   clientSendId  String?
   sentAt        DateTime?
@@ -969,9 +981,11 @@ model EmailMessage {
   recipients EmailRecipient[]
   deliveryEvents EmailDeliveryEvent[]
   attachments Attachment[]
+  sendJob   MailSendJob?
 
   @@unique([ownerId, internetMessageId])
   @@unique([ownerId, clientSendId])
+  @@unique([ownerId, providerMessageId])
   @@index([threadId, createdAt])
 }
 
@@ -987,6 +1001,8 @@ enum EmailStatus {
   DELIVERED
   BOUNCED
   FAILED
+  /// Accepted by the provider for some recipients, rejected for others.
+  PARTIAL
 }
 
 model EmailRecipient {
@@ -994,9 +1010,11 @@ model EmailRecipient {
   emailMessageId String
   address        String   @db.VarChar(320)
   recipientType  RecipientType @default(TO)
-  /// Routing decision (spec §16): Convo-internal or external SMTP.
-  route          MailRoute @default(EXTERNAL_SMTP)
+  /// Routing decision (spec §16): Convo-internal or the owner's provider.
+  route          MailRoute @default(EXTERNAL_PROVIDER)
   status         EmailStatus @default(QUEUED)
+  /// Per-recipient provider rejection text (partial-send diagnostics).
+  diagnostic     String?  @db.Text
 
   emailMessage EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
 
@@ -1011,7 +1029,7 @@ enum RecipientType {
 
 enum MailRoute {
   CONVO_INTERNAL
-  EXTERNAL_SMTP
+  EXTERNAL_PROVIDER
 }
 
 model EmailDeliveryEvent {
@@ -1019,12 +1037,16 @@ model EmailDeliveryEvent {
   emailMessageId String
   event          String   @db.VarChar(64) // sent, delivered, bounce, complaint…
   provider       String   @db.VarChar(64)
+  /// Provider-side event id for webhook dedup.
+  providerEventId  String? @db.VarChar(255)
+  recipientAddress String? @db.VarChar(320)
   payload        Json?
   createdAt      DateTime @default(now())
 
   emailMessage EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
 
   @@index([emailMessageId, createdAt])
+  @@unique([provider, providerEventId])
 }
 
 /// Daily per-user external send counter for abuse prevention (spec §30).
@@ -1037,6 +1059,153 @@ model EmailSendUsage {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, day])
+}
+
+// ─────────────────────── Mail providers (Option B) ───────────────────────────
+
+enum MailProvider {
+  GOOGLE
+  MICROSOFT
+}
+
+enum MailConnectionStatus {
+  CONNECTED
+  /// Refresh token rejected or revoked; the user must reconnect.
+  NEEDS_REAUTH
+  /// User disconnected the mailbox.
+  REVOKED
+  ERROR
+}
+
+/// Why an OAuth round-trip was started. SIGN_IN proves address ownership and
+/// yields a session; CONNECT links a mailbox to an existing account.
+enum MailOAuthPurpose {
+  SIGN_IN
+  CONNECT
+}
+
+enum EmailVerificationMethod {
+  OTP
+  OAUTH
+}
+
+enum MailSendJobStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+/// A revocable OAuth grant for one EmailIdentity. EmailIdentity proves the
+/// address; this holds the provider tokens that let us read and send mail.
+model MailConnection {
+  id              String @id @default(cuid())
+  emailIdentityId String @unique
+
+  provider          MailProvider
+  /// Google `sub` / Microsoft `oid` — stable per provider account.
+  providerAccountId String  @db.VarChar(255)
+  emailAddress      String  @db.VarChar(320)
+  displayName       String? @db.VarChar(128)
+  scopes            String[] @default([])
+
+  // AES-256-GCM envelopes. Ciphertext/IV/tag are always written together.
+  accessTokenCiphertext  Bytes?
+  accessTokenIv          Bytes?
+  accessTokenTag         Bytes?
+  accessTokenExpiresAt   DateTime?
+  refreshTokenCiphertext Bytes?
+  refreshTokenIv         Bytes?
+  refreshTokenTag        Bytes?
+  /// Key epoch used for every envelope above; enables rotation.
+  tokenKeyVersion       Int @default(1)
+  /// Bumped on each refresh so concurrent refreshes can detect a lost race.
+  tokenVersion          Int @default(0)
+
+  status          MailConnectionStatus @default(CONNECTED)
+  statusReason    String?  @db.VarChar(255)
+  lastRefreshedAt DateTime?
+  lastSyncedAt    DateTime?
+  lastSyncError   String?  @db.Text
+
+  /// Gmail historyId / Graph deltaLink.
+  syncCursor      String?  @db.Text
+  syncCursorAt    DateTime?
+  initialSyncDone Boolean  @default(false)
+
+  // Gmail users.watch / Graph subscriptions (push). HTTP push, so no secret
+  // hash is stored; the opaque channel/token id lives in subscriptionId.
+  watchExpiresAt    DateTime?
+  subscriptionId    String?  @db.VarChar(255)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  emailIdentity EmailIdentity @relation(fields: [emailIdentityId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([status, watchExpiresAt])
+  @@index([lastSyncedAt])
+}
+
+/// Server-side half of an OAuth round-trip: CSRF state, PKCE verifier, nonce.
+/// Only hashes of the state are stored; the verifier is encrypted.
+model MailOAuthState {
+  id        String @id @default(cuid())
+  stateHash String @unique @db.VarChar(64)
+  purpose   MailOAuthPurpose
+  provider  MailProvider
+  /// Set for CONNECT (existing account); null for SIGN_IN until callback.
+  userId    String?
+  nonce     String @db.VarChar(128)
+
+  codeVerifierCiphertext Bytes
+  codeVerifierIv         Bytes
+  codeVerifierTag        Bytes
+  keyVersion             Int    @default(1)
+
+  /// Which client started the flow ("web" | "mobile").
+  client        String  @default("web") @db.VarChar(16)
+  redirectAfter String? @db.VarChar(2048)
+  expiresAt     DateTime
+  consumedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+/// One-time code exchanged by a client for tokens after a browser OAuth
+/// redirect. Tokens never travel in a URL.
+model AuthHandoff {
+  id         String @id @default(cuid())
+  codeHash   String @unique @db.VarChar(64)
+  userId     String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+/// Durable outbox for provider sends, so a reply survives a process restart.
+model MailSendJob {
+  id             String @id @default(cuid())
+  emailMessageId String @unique
+  status         MailSendJobStatus @default(PENDING)
+  attempts       Int @default(0)
+  nextAttemptAt  DateTime @default(now())
+  lockedAt       DateTime?
+  lockedBy       String?  @db.VarChar(64)
+  lastError      String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  emailMessage EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
 }
 
 // ─────────────────────────── Notifications, moderation, audit ────────────────

@@ -212,12 +212,12 @@ describe.skipIf(!TEST_DATABASE_URL)("mail integration", () => {
     const external = result.thread.participants.find((p) => p.address === "someone@outside.test");
     expect(external?.isExternal).toBe(true);
     expect(external?.convoUserId).toBeNull();
-    // Server-side row was stored QUEUED / EXTERNAL_SMTP for the Phase 4 gateway.
+    // Server-side row was stored QUEUED / EXTERNAL_PROVIDER for the Phase 4 gateway.
     const stored = await db.emailRecipient.findFirst({
       where: { emailMessageId: result.message.id, address: "someone@outside.test" },
     });
     expect(stored?.status).toBe("QUEUED");
-    expect(stored?.route).toBe("EXTERNAL_SMTP");
+    expect(stored?.route).toBe("EXTERNAL_PROVIDER");
   });
 
   it("rejects a phone-only user (no Mail capability) with 403", async () => {

@@ -30,12 +30,15 @@ import type {
   GroupDetail,
   GroupList,
   IceConfig,
+  MailConnection,
+  MailConnectionList,
   MailMessagePage,
   MailThreadList,
   Message,
   MessageLocation,
   MessagePage,
   MissedCallCount,
+  OAuthStartResult,
   RecentRecipientList,
   RegisterDeviceRequest,
   ReplyMailRequest,
@@ -405,6 +408,16 @@ export const api = {
     request<SendMailResult>(`/mail/threads/${threadId}/reply`, { method: "POST", body, auth: true }),
   markThreadRead: (threadId: string) =>
     request<{ ok: true }>(`/mail/threads/${threadId}/read`, { method: "POST", body: {}, auth: true }),
+
+  // ── Mail connections (Phase 4) ──
+  startGoogleOAuth: () =>
+    request<OAuthStartResult>("/mail/connections/google/start", { method: "POST", body: {}, auth: true }),
+  listMailConnections: () =>
+    request<MailConnectionList>("/mail/connections", { auth: true }),
+  deleteMailConnection: (id: string) =>
+    request<{ ok: true }>(`/mail/connections/${id}`, { method: "DELETE", auth: true }),
+  syncMailConnection: (id: string) =>
+    request<{ ok: true }>(`/mail/connections/${id}/sync`, { method: "POST", body: {}, auth: true }),
 
   // ── Groups (Phase 4B) ──
   createGroup: (body: CreateGroupRequest) =>

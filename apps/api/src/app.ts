@@ -7,6 +7,7 @@ import { ApiErrorCode } from "@convo/shared";
 import type { AppDeps } from "./deps.js";
 import { AppError, sendError } from "./lib/errors.js";
 import { authRoutes } from "./routes/auth.js";
+import { googleOAuthRoutes } from "./routes/auth/google.js";
 import { callRoutes } from "./routes/calls.js";
 import { contactRoutes } from "./routes/contacts.js";
 import { conversationRoutes } from "./routes/conversations.js";
@@ -17,6 +18,7 @@ import { giphyRoutes } from "./routes/giphy.js";
 import { healthRoutes } from "./routes/health.js";
 import { identityRoutes } from "./routes/identities.js";
 import { mailRoutes } from "./routes/mail.js";
+import { connectionRoutes } from "./routes/mail/connections.js";
 import { mediaRoutes } from "./routes/media.js";
 import { meRoutes } from "./routes/me.js";
 import { notificationRoutes } from "./routes/notifications.js";
@@ -102,6 +104,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   await app.register(healthRoutes);
   await app.register(authRoutes, deps);
+  await app.register(googleOAuthRoutes, { db: deps.db, config: deps.config });
   await app.register(identityRoutes, deps);
   await app.register(meRoutes, deps);
   await app.register(conversationRoutes, deps);
@@ -114,6 +117,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(mediaRoutes, deps);
   await app.register(giphyRoutes, deps);
   await app.register(mailRoutes, deps);
+  await app.register(connectionRoutes, { db: deps.db, config: deps.config });
   await app.register(notificationRoutes, deps);
   await app.register(folderRoutes, deps);
   await app.register(wsRoutes, deps);

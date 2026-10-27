@@ -15,6 +15,7 @@ import { createPushTransport } from "./services/push.js";
 import { notifyUser } from "./services/notifications.js";
 import { getRedis, disconnectRedis } from "./redis.js";
 import { TransportRouter } from "./services/transport.js";
+import { runMailSyncWorker, runMailOutboxWorker } from "./services/mailSync.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -84,6 +85,14 @@ async function main(): Promise<void> {
     setInterval(() => {
       void sweepExpiredFeedPosts(db, media).catch(() => {});
     }, config.FEED_SWEEP_SECONDS * 1000),
+    // Mail sync: poll connections and run incremental sync every 5 minutes.
+    setInterval(() => {
+      void runMailSyncWorker({ db, config }).catch(() => {});
+    }, 5 * 60 * 1000),
+    // Mail outbox: drain pending send jobs every 30 seconds.
+    setInterval(() => {
+      void runMailOutboxWorker({ db, config }).catch(() => {});
+    }, 30 * 1000),
   ];
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {

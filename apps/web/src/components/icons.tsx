@@ -400,3 +400,14 @@ export function CallOutgoingIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function RefreshIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className ?? base} aria-hidden>
+      <path d="M3 12a9 9 0 019-9 9 9 0 016.4 2.6L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 01-9 9 9 9 0 01-6.4-2.6L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
+  );
+}

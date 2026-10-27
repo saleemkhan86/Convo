@@ -184,5 +184,5 @@ export type DeleteAccountResult = z.infer<typeof deleteAccountResultSchema>;
 
 // --- Mail routing (section 16 of the spec) ---
 
-export const mailRouteSchema = z.enum(["CONVO_INTERNAL", "EXTERNAL_SMTP"]);
+export const mailRouteSchema = z.enum(["CONVO_INTERNAL", "EXTERNAL_PROVIDER"]);
 export type MailRoute = z.infer<typeof mailRouteSchema>;

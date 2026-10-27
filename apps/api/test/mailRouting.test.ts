@@ -22,7 +22,7 @@ describe("resolveMailRoute", () => {
 
   it("routes unknown addresses to external SMTP", async () => {
     const decision = await resolveMailRoute(fakeDb(null), "bob@gmail.com");
-    expect(decision).toEqual({ route: "EXTERNAL_SMTP" });
+    expect(decision).toEqual({ route: "EXTERNAL_PROVIDER" });
   });
 
   it("normalizes case and whitespace before lookup", async () => {

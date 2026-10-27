@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeftIcon, CheckIcon, MailIcon, PhoneIcon } from "../components/icons";
 import { Badge, Button, Card, Input, Logo, cx } from "../components/ui";
 import { PrivacySection, SecuritySection } from "../components/PrivacySecurity";
+import { MailConnectionsSection } from "../components/MailConnections";
 import { ApiRequestError, api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useTheme, type ThemeMode } from "../lib/theme";
@@ -95,6 +96,12 @@ export function SettingsPage() {
               </div>
             </div>
           </Card>
+        </section>
+
+        {/* Mail connections (Phase 4) */}
+        <section>
+          <SectionTitle>Mail connections</SectionTitle>
+          <MailConnectionsSection />
         </section>
 
         {/* Appearance */}

@@ -40,6 +40,33 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   MAIL_FROM: z.string().default("Convo <no-reply@convo.local>"),
 
+  // Mailbox OAuth (Option B). Secrets stay server-side; the web build never
+  // sees any of these. With no Google credentials configured the provider is
+  // simply absent from the registry and its routes report "not configured".
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  /** Defaults to `${API_PUBLIC_URL}/auth/google/callback`. */
+  GOOGLE_REDIRECT_URI: z.string().url().optional(),
+
+  // Token envelope encryption. 32-byte key as base64 or 64-char hex. Optional
+  // at boot so existing deployments keep starting; mailbox routes fail closed.
+  MAIL_TOKEN_ENC_KEY: z.string().optional(),
+  MAIL_TOKEN_KEY_VERSION: z.coerce.number().int().min(1).default(1),
+  /** Previous key kept during rotation so old envelopes still decrypt. */
+  MAIL_TOKEN_ENC_KEY_PREVIOUS: z.string().optional(),
+  MAIL_TOKEN_KEY_VERSION_PREVIOUS: z.coerce.number().int().min(1).optional(),
+
+  MAIL_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().min(60).default(600),
+  MAIL_OAUTH_HANDOFF_TTL_SECONDS: z.coerce.number().int().min(30).default(60),
+
+  /** Host used to mint RFC 5322 Message-IDs; defaults to APP_URL's host. */
+  MAIL_MESSAGE_ID_DOMAIN: z.string().optional(),
+  MAIL_SYNC_INITIAL_DAYS: z.coerce.number().int().min(1).default(30),
+  MAIL_SYNC_PAGE_SIZE: z.coerce.number().int().min(1).max(500).default(100),
+  MAIL_SYNC_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
+  /** Hard cap on stored normalized body text, in characters. */
+  MAIL_MAX_BODY_CHARS: z.coerce.number().int().min(1000).default(20_000),
+
   // Media storage (Phase 4B: status photos/videos, chat attachments later).
   // All credentials stay server-side; clients only ever see expiring URLs.
   MEDIA_STORAGE_PROVIDER: z.enum(["local", "supabase"]).default("local"),
@@ -101,9 +128,16 @@ const envSchema = z.object({
   VAPID_SUBJECT: z.string().default("mailto:push@convo.local"),
 });
 
-export type Config = Omit<z.infer<typeof envSchema>, "API_PUBLIC_URL"> & {
+export type Config = Omit<
+  z.infer<typeof envSchema>,
+  "API_PUBLIC_URL" | "GOOGLE_REDIRECT_URI" | "MAIL_MESSAGE_ID_DOMAIN"
+> & {
   /** Always resolved: env value, else the local API port in development. */
   API_PUBLIC_URL: string;
+  /** Always resolved: env value, else `${API_PUBLIC_URL}/auth/google/callback`. */
+  GOOGLE_REDIRECT_URI: string;
+  /** Always resolved: env value, else APP_URL's hostname. */
+  MAIL_MESSAGE_ID_DOMAIN: string;
   isProduction: boolean;
   isDev: boolean;
 };
@@ -134,11 +168,32 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (Boolean(parsed.data.VAPID_PUBLIC_KEY) !== Boolean(parsed.data.VAPID_PRIVATE_KEY)) {
     throw new Error("Web push needs both VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY (or neither)");
   }
+  if (Boolean(parsed.data.GOOGLE_CLIENT_ID) !== Boolean(parsed.data.GOOGLE_CLIENT_SECRET)) {
+    throw new Error("Google OAuth needs both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (or neither)");
+  }
+  if (
+    Boolean(parsed.data.MAIL_TOKEN_ENC_KEY_PREVIOUS) !==
+    Boolean(parsed.data.MAIL_TOKEN_KEY_VERSION_PREVIOUS)
+  ) {
+    throw new Error(
+      "MAIL_TOKEN_ENC_KEY_PREVIOUS and MAIL_TOKEN_KEY_VERSION_PREVIOUS must be set together",
+    );
+  }
+  if (
+    parsed.data.MAIL_TOKEN_KEY_VERSION_PREVIOUS !== undefined &&
+    parsed.data.MAIL_TOKEN_KEY_VERSION_PREVIOUS === parsed.data.MAIL_TOKEN_KEY_VERSION
+  ) {
+    throw new Error("MAIL_TOKEN_KEY_VERSION_PREVIOUS must differ from MAIL_TOKEN_KEY_VERSION");
+  }
   const apiPublicUrl = (parsed.data.API_PUBLIC_URL ?? `http://localhost:${parsed.data.PORT}`)
     .replace(/\/+$/, "");
   return {
     ...parsed.data,
     API_PUBLIC_URL: apiPublicUrl,
+    GOOGLE_REDIRECT_URI:
+      parsed.data.GOOGLE_REDIRECT_URI ?? `${apiPublicUrl}/auth/google/callback`,
+    MAIL_MESSAGE_ID_DOMAIN:
+      parsed.data.MAIL_MESSAGE_ID_DOMAIN ?? new URL(parsed.data.APP_URL).hostname,
     isProduction: parsed.data.NODE_ENV === "production",
     isDev: parsed.data.NODE_ENV === "development",
   };

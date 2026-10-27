@@ -387,7 +387,7 @@ contracts and business logic where practical" with the least duplication.
   (dev only; production requires SMTP_HOST).
 - **Routing decision (spec §16)** — `services/mailRouting.ts` resolves a
   recipient: known Convo email identity → `CONVO_INTERNAL`, else
-  `EXTERNAL_SMTP`. This resolver is internal-only; no public endpoint exposes
+  `EXTERNAL_PROVIDER`. This resolver is internal-only; no public endpoint exposes
   whether an address belongs to a Convo user (enumeration protection).
 - **Threading (spec §15)** — `email_messages` stores `internetMessageId`,
   `inReplyTo`, `references[]`; the SMTP adapter passes these headers through.

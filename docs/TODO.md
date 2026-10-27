@@ -70,7 +70,7 @@ below that is not checked is deferred by design, not forgotten.
       realtime `mail.new` fan-out per recipient
 - [x] Idempotent send (`clientSendId` UUID unique per owner) + reply threading
       with `Re:` subject reification
-- [x] External recipients accepted and stored `QUEUED` (`EXTERNAL_SMTP`) for the
+- [x] External recipients accepted and stored `QUEUED` (`EXTERNAL_PROVIDER`) for the
       Phase 4 gateway; route is never exposed to the client (anti-enumeration)
 - [x] Shared contracts (`packages/shared/src/mail.ts`) + `mail.new` WS event
 - [x] REST API: `GET /mail/threads`, `GET /mail/threads/:id/messages`,

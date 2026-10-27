@@ -329,7 +329,7 @@ export async function composeMail(
           create: recipients.map((r) => ({
             address: r.address,
             recipientType: "TO" as const,
-            route: r.internal ? ("CONVO_INTERNAL" as const) : ("EXTERNAL_SMTP" as const),
+            route: r.internal ? ("CONVO_INTERNAL" as const) : ("EXTERNAL_PROVIDER" as const),
             status: r.internal ? ("DELIVERED" as const) : ("QUEUED" as const),
           })),
         },
@@ -443,7 +443,7 @@ export async function replyToThread(
           create: recipients.map((r) => ({
             address: r.address,
             recipientType: "TO" as const,
-            route: r.internal ? ("CONVO_INTERNAL" as const) : ("EXTERNAL_SMTP" as const),
+            route: r.internal ? ("CONVO_INTERNAL" as const) : ("EXTERNAL_PROVIDER" as const),
             status: r.internal ? ("DELIVERED" as const) : ("QUEUED" as const),
           })),
         },

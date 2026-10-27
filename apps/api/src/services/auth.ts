@@ -187,7 +187,7 @@ function isUniqueViolation(err: unknown): boolean {
   );
 }
 
-async function issueSession(
+export async function issueSession(
   deps: AuthDeps,
   userId: string,
   ctx: LoginContext,

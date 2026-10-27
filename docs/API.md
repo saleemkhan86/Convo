@@ -300,7 +300,7 @@ over HTTP and are made **idempotent** by a client-generated `clientSendId`
 (UUID), so a retry returns the original instead of duplicating.
 
 External (non-Convo) addresses are accepted and stored as `QUEUED`
-(`route: EXTERNAL_SMTP`) for the Phase 4 gateway to drain. The composer **never**
+(`route: EXTERNAL_PROVIDER`) for the Phase 4 gateway to drain. The composer **never**
 learns whether a recipient was routed internally or externally — the request
 shape is identical for both, which avoids a user-enumeration oracle.
 

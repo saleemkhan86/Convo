@@ -28,6 +28,7 @@ export const mailStatusSchema = z.enum([
   "DELIVERED",
   "BOUNCED",
   "FAILED",
+  "PARTIAL",
 ]);
 export type MailStatus = z.infer<typeof mailStatusSchema>;
 
@@ -114,3 +115,71 @@ export const mailNewEventSchema = z.object({
   message: mailMessageSchema,
 });
 export type MailNewEvent = z.infer<typeof mailNewEventSchema>;
+
+// ─────────────── Mailbox connections (Option B) ───────────────
+
+export const mailProviderSchema = z.enum(["GOOGLE", "MICROSOFT"]);
+export type MailProvider = z.infer<typeof mailProviderSchema>;
+
+export const mailConnectionStatusSchema = z.enum([
+  "CONNECTED",
+  "NEEDS_REAUTH",
+  "REVOKED",
+  "ERROR",
+]);
+export type MailConnectionStatus = z.infer<typeof mailConnectionStatusSchema>;
+
+/** A user's connected mailbox, as seen by the client. */
+export const mailConnectionSchema = z.object({
+  id: z.string(),
+  provider: mailProviderSchema,
+  emailAddress: z.string(),
+  displayName: z.string().nullable(),
+  status: mailConnectionStatusSchema,
+  statusReason: z.string().nullable(),
+  lastSyncedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+});
+export type MailConnection = z.infer<typeof mailConnectionSchema>;
+
+export const mailConnectionListSchema = z.object({
+  connections: z.array(mailConnectionSchema),
+});
+export type MailConnectionList = z.infer<typeof mailConnectionListSchema>;
+
+export const mailSyncResultSchema = z.object({
+  connectionId: z.string(),
+  syncedCount: z.number().int().nonnegative(),
+  cursor: z.string().nullable(),
+  nextCursor: z.string().nullable(),
+});
+export type MailSyncResult = z.infer<typeof mailSyncResultSchema>;
+
+// ─────────────── OAuth exchange ───────────────
+
+/**
+ * One-time code returned by the OAuth callback; the client exchanges it for
+ * session tokens at `POST /auth/oauth/exchange`.
+ */
+export const oauthExchangeRequestSchema = z.object({
+  code: z.string().min(1),
+});
+export type OAuthExchangeRequest = z.infer<typeof oauthExchangeRequestSchema>;
+
+export const oauthExchangeResultSchema = z.object({
+  session: z.object({
+    accessToken: z.string(),
+    refreshToken: z.string(),
+    accessExpiresInSeconds: z.number().int(),
+  }),
+  userId: z.string(),
+});
+export type OAuthExchangeResult = z.infer<typeof oauthExchangeResultSchema>;
+
+/** Response from initiating an authenticated OAuth connect flow. */
+export const oauthStartResultSchema = z.object({
+  authorizationUrl: z.string().url(),
+  state: z.string(),
+  expiresAt: z.string().datetime(),
+});
+export type OAuthStartResult = z.infer<typeof oauthStartResultSchema>;

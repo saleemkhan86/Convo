@@ -292,6 +292,15 @@ function MailBubble({ message, mine }: { message: MailMessage; mine: boolean }) 
             : "rounded-bl-md bg-white text-ink-800 dark:bg-night-surface dark:text-ink-100",
         )}
       >
+        {message.subject && (
+          <div className={cx(
+            "mb-1 flex items-center gap-1.5 border-b pb-1 text-xs font-semibold",
+            mine ? "border-white/20" : "border-ink-200 dark:border-night-border"
+          )}>
+            <MailIcon className="h-3 w-3 shrink-0" />
+            <span className="truncate">{message.subject}</span>
+          </div>
+        )}
         <p className="whitespace-pre-wrap break-words">{message.bodyText}</p>
         <p className={cx("mt-0.5 text-right text-[10px]", mine ? "text-white/75" : "text-ink-400")}>
           {clockTime(message.createdAt)}

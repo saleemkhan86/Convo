@@ -9,7 +9,8 @@ export interface MailRouteDecision {
 
 /**
  * Routing decision for a recipient address (spec §16):
- * recognized Convo email identity → internal delivery; otherwise external SMTP.
+ * recognized Convo email identity → internal delivery; otherwise external
+ * delivery through the recipient's own mail provider.
  *
  * Privacy: this resolver is INTERNAL ONLY. No public endpoint may expose
  * whether an arbitrary address belongs to a Convo user (enumeration risk).
@@ -27,5 +28,5 @@ export async function resolveMailRoute(
   if (identity) {
     return { route: "CONVO_INTERNAL", convoUserId: identity.userId };
   }
-  return { route: "EXTERNAL_SMTP" };
+  return { route: "EXTERNAL_PROVIDER" };
 }
