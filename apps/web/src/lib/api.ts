@@ -38,6 +38,7 @@ import type {
   MessageLocation,
   MessagePage,
   MissedCallCount,
+  OAuthExchangeResult,
   OAuthStartResult,
   RecentRecipientList,
   RegisterDeviceRequest,
@@ -418,6 +419,10 @@ export const api = {
     request<{ ok: true }>(`/mail/connections/${id}`, { method: "DELETE", auth: true }),
   syncMailConnection: (id: string) =>
     request<{ ok: true }>(`/mail/connections/${id}/sync`, { method: "POST", body: {}, auth: true }),
+
+  // ── OAuth exchange ──
+  exchangeOAuthCode: (code: string) =>
+    request<OAuthExchangeResult>("/auth/oauth/exchange", { method: "POST", body: { code } }),
 
   // ── Groups (Phase 4B) ──
   createGroup: (body: CreateGroupRequest) =>

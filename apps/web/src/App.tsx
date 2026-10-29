@@ -7,6 +7,7 @@ import { RealtimeProvider } from "./lib/realtime";
 import { EmailAuthPage, PhoneAuthPage } from "./pages/AuthPages";
 import { ConnectIdentityPage } from "./pages/ConnectIdentityPage";
 import { HomePage } from "./pages/HomePage";
+import { OAuthCallbackPage } from "./pages/OAuthCallbackPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { WelcomePage } from "./pages/WelcomePage";
 
@@ -42,6 +43,7 @@ export function App() {
       />
       <Route path="/auth/phone" element={<RedirectIfAuthed><PhoneAuthPage /></RedirectIfAuthed>} />
       <Route path="/auth/email" element={<RedirectIfAuthed><EmailAuthPage /></RedirectIfAuthed>} />
+      <Route path="/auth/oauth/callback" element={<OAuthCallbackPage />} />
       <Route path="/" element={<RequireAuth><HomePage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/settings/connect-email" element={<RequireAuth><ConnectIdentityPage channel="email" /></RequireAuth>} />
