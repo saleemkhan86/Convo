@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Spinner } from "../components/ui";
-import { api } from "../lib/api";
+import { api, saveSession } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 export function OAuthCallbackPage() {
@@ -20,7 +20,9 @@ export function OAuthCallbackPage() {
     const exchangeCode = async () => {
       try {
         const result = await api.exchangeOAuthCode(code);
-        signIn(result);
+        saveSession(result.session);
+        const account = await api.me();
+        signIn({ session: result.session, account, isNewAccount: false });
         navigate("/", { replace: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to complete sign-in");
