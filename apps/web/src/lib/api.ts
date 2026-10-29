@@ -71,6 +71,8 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
+export { API_BASE };
+
 interface StoredSession extends SessionTokens {
   expiresAt: number;
 }

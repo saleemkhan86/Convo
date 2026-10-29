@@ -1,11 +1,14 @@
 import { Link } from "react-router-dom";
 import { Button, Card, Logo } from "../components/ui";
 import { ChatIcon, MailIcon, PhoneIcon } from "../components/icons";
+import { API_BASE } from "../lib/api";
 
 export function WelcomePage() {
   const handleGoogleSignIn = () => {
-    // Redirect to the public Google OAuth endpoint for sign-in
-    window.location.href = "/auth/google?purpose=SIGN_IN&client=web";
+    // The OAuth flow lives on the API server, not this SPA — navigating to a
+    // relative /auth/google here would just hit the SPA fallback and reload.
+    const callbackUrl = `${window.location.origin}/auth/oauth/callback`;
+    window.location.href = `${API_BASE}/auth/google?purpose=SIGN_IN&client=web&redirect_after=${encodeURIComponent(callbackUrl)}`;
   };
 
   return (
