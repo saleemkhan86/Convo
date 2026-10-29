@@ -7,9 +7,7 @@ export type { EmailProvider, OutgoingEmail, ParsedEmail, ProviderSendResult } fr
 
 export function createEmailProvider(config: Config): EmailProvider {
   if (!config.SMTP_HOST) {
-    if (config.isProduction) {
-      throw new Error("SMTP_HOST is required in production");
-    }
+    // SMTP is optional - only needed for email OTP, not for Google OAuth
     return new ConsoleEmailProvider();
   }
   return new SmtpProvider({
