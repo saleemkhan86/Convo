@@ -111,6 +111,17 @@ async function syncConnection(
 }
 
 /**
+ * Kick the outbox asynchronously right after a job is enqueued, so the
+ * first send isn't held behind the periodic sweep — critical on hosting
+ * that hibernates between HTTP requests.
+ */
+export function kickMailOutbox(deps: MailSyncDeps): void {
+  setImmediate(() => {
+    void runMailOutboxWorker(deps).catch(() => {});
+  });
+}
+
+/**
  * Background worker that drains the MailSendJob outbox.
  * Processes pending jobs with exponential backoff on failure.
  */
@@ -136,7 +147,6 @@ export async function runMailOutboxWorker(deps: MailSyncDeps): Promise<void> {
     take: 5, // Process up to 5 jobs per sweep.
     orderBy: { nextAttemptAt: "asc" },
   });
-
   for (const job of jobs) {
     try {
       // Try to acquire an advisory lock for this job.

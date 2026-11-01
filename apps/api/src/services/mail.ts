@@ -18,7 +18,9 @@ import type {
   SendMailResult,
 } from "@convo/shared";
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
+import type { Config } from "../config.js";
 import { resolveMailRoute } from "./mailRouting.js";
+import { kickMailOutbox } from "./mailSync.js";
 import type { RealtimeHub } from "./realtime.js";
 import type { NotificationItem } from "@convo/shared";
 
@@ -37,6 +39,8 @@ import type { NotificationItem } from "@convo/shared";
 export interface MailDeps {
   db: PrismaClient;
   hub: RealtimeHub;
+  /** Kick the outbox immediately after enqueueing an external send. */
+  config?: Config;
   /** Phase 5G: notify each internal recipient about a new mail message. */
   notifyRecipient?: (
     userId: string,
@@ -368,6 +372,7 @@ export async function composeMail(
     await db.mailSendJob.create({
       data: { emailMessageId: senderMsgId },
     });
+    if (deps.config) kickMailOutbox({ db, config: deps.config });
   }
 
   const message = await db.emailMessage.findUniqueOrThrow({
@@ -498,6 +503,7 @@ export async function replyToThread(
     });
     if (conn) {
       await db.mailSendJob.create({ data: { emailMessageId: senderMsgId } });
+      if (deps.config) kickMailOutbox({ db, config: deps.config });
     }
   }
 

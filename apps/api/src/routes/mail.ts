@@ -24,6 +24,7 @@ export async function mailRoutes(app: FastifyInstance, deps: AppDeps): Promise<v
   const svc: MailDeps = {
     db: deps.db,
     hub: deps.hub,
+    config: deps.config,
     // Phase 5G: notify each internal recipient about a new mail message.
     notifyRecipient: (userId, title, body, actorId, conversationId, messageId) =>
       notifyUser(notifySvc, { userId, type: "MAIL_MESSAGE", title, body, actorId, conversationId, messageId }),
