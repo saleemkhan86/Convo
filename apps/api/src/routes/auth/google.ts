@@ -42,6 +42,7 @@ export async function googleOAuthRoutes(
       purpose?: string;
       client?: string;
       redirect_after?: string;
+      response?: string;
     };
     const purpose = query.purpose === "CONNECT" ? "CONNECT" : "SIGN_IN";
     const client: OAuthClient = query.client === "mobile" ? "mobile" : "web";
@@ -66,6 +67,9 @@ export async function googleOAuthRoutes(
       },
     );
 
+    if (query.response === "json") {
+      return { authorizationUrl: result.authorizationUrl };
+    }
     return reply.redirect(result.authorizationUrl);
   });
 

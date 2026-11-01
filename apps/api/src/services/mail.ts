@@ -300,6 +300,13 @@ export async function composeMail(
     throw badRequest("Choose at least one recipient other than yourself");
   }
 
+  const hasExternal = recipients.some((r) => !r.internal);
+  const connection = hasExternal
+    ? await db.mailConnection.findFirst({
+        where: { emailIdentity: { userId }, status: "CONNECTED" },
+      })
+    : null;
+
   const threadKey = randomUUID();
   const internetMessageId = `<${randomUUID()}@${MAIL_DOMAIN}>`;
   const subject = input.subject?.trim() ? input.subject.trim() : null;
@@ -325,6 +332,7 @@ export async function composeMail(
         bodyText: input.body,
         clientSendId: input.clientSendId,
         sentAt: now,
+        provider: connection?.provider ?? null,
         recipients: {
           create: recipients.map((r) => ({
             address: r.address,
@@ -355,6 +363,12 @@ export async function composeMail(
 
     return senderMsg.id;
   }, { timeout: MAIL_TX_TIMEOUT_MS, maxWait: MAIL_TX_MAX_WAIT_MS });
+
+  if (hasExternal && connection) {
+    await db.mailSendJob.create({
+      data: { emailMessageId: senderMsgId },
+    });
+  }
 
   const message = await db.emailMessage.findUniqueOrThrow({
     where: { id: senderMsgId },
@@ -425,6 +439,13 @@ export async function replyToThread(
   const senderMsgId = await db.$transaction(async (tx) => {
     await tx.emailThread.update({ where: { id: own.id }, data: { lastActivityAt: now } });
 
+    const hasExternal = recipients.some((r) => !r.internal);
+    const connection = hasExternal
+      ? await tx.mailConnection.findFirst({
+          where: { emailIdentity: { userId }, status: "CONNECTED" },
+        })
+      : null;
+
     const senderMsg = await tx.emailMessage.create({
       data: {
         threadId: own.id,
@@ -439,6 +460,7 @@ export async function replyToThread(
         bodyText: input.body,
         clientSendId: input.clientSendId,
         sentAt: now,
+        provider: connection?.provider ?? null,
         recipients: {
           create: recipients.map((r) => ({
             address: r.address,
@@ -469,6 +491,15 @@ export async function replyToThread(
 
     return senderMsg.id;
   }, { timeout: MAIL_TX_TIMEOUT_MS, maxWait: MAIL_TX_MAX_WAIT_MS });
+
+  if (recipients.some((r) => !r.internal)) {
+    const conn = await db.mailConnection.findFirst({
+      where: { emailIdentity: { userId }, status: "CONNECTED" },
+    });
+    if (conn) {
+      await db.mailSendJob.create({ data: { emailMessageId: senderMsgId } });
+    }
+  }
 
   const message = await db.emailMessage.findUniqueOrThrow({
     where: { id: senderMsgId },

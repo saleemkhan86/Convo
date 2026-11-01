@@ -193,7 +193,7 @@ async function processSendJob(
       bodyHtml: string | null;
       provider: "GOOGLE" | "MICROSOFT" | null;
       providerThreadId: string | null;
-      recipients: { address: string; recipientType: "TO" | "CC" | "BCC" }[];
+      recipients: { address: string; recipientType: "TO" | "CC" | "BCC"; route: "CONVO_INTERNAL" | "EXTERNAL_PROVIDER" }[];
     };
   },
   cipher: ReturnType<typeof createMailTokenCipher>,
@@ -226,10 +226,11 @@ async function processSendJob(
     throw new Error(`Provider ${connection.provider} not configured`);
   }
 
-  // Build outgoing mail.
-  const to = message.recipients.filter((r) => r.recipientType === "TO").map((r) => ({ address: r.address }));
-  const cc = message.recipients.filter((r) => r.recipientType === "CC").map((r) => ({ address: r.address }));
-  const bcc = message.recipients.filter((r) => r.recipientType === "BCC").map((r) => ({ address: r.address }));
+  // Build outgoing mail — only external recipients need provider delivery.
+  const external = message.recipients.filter((r) => r.route === "EXTERNAL_PROVIDER");
+  const to = external.filter((r) => r.recipientType === "TO").map((r) => ({ address: r.address }));
+  const cc = external.filter((r) => r.recipientType === "CC").map((r) => ({ address: r.address }));
+  const bcc = external.filter((r) => r.recipientType === "BCC").map((r) => ({ address: r.address }));
 
   const receipt = await sendMailWithProvider({
     provider,
@@ -264,6 +265,12 @@ async function processSendJob(
       status: "SENT",
       sentAt: new Date(),
     },
+  });
+
+  // Mark external recipients as delivered.
+  await deps.db.emailRecipient.updateMany({
+    where: { emailMessageId: message.id, route: "EXTERNAL_PROVIDER" },
+    data: { status: "DELIVERED" },
   });
 
   console.log(`[mailOutbox] Sent message ${message.id} via ${connection.provider}`);
