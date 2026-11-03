@@ -304,15 +304,12 @@ export async function composeMail(
     throw badRequest("Choose at least one recipient other than yourself");
   }
 
-  // Always route outbound through the sender's provider (Gmail API): this is
-  // what users expect — the recipient's Gmail inbox and the sender's SENT
-  // folder both see the message. Convo-internal recipients additionally get a
-  // mirrored copy in their Convo mailbox for realtime delivery.
-  const connection = await db.mailConnection.findFirst({
-    where: { emailIdentity: { userId }, status: "CONNECTED" },
-  });
   const hasExternal = recipients.some((r) => !r.internal);
-  const willSendViaProvider = Boolean(connection) && (hasExternal || recipients.length > 0);
+  const connection = hasExternal
+    ? await db.mailConnection.findFirst({
+        where: { emailIdentity: { userId }, status: "CONNECTED" },
+      })
+    : null;
 
   const threadKey = randomUUID();
   const internetMessageId = `<${randomUUID()}@${MAIL_DOMAIN}>`;
@@ -371,7 +368,7 @@ export async function composeMail(
     return senderMsg.id;
   }, { timeout: MAIL_TX_TIMEOUT_MS, maxWait: MAIL_TX_MAX_WAIT_MS });
 
-  if (willSendViaProvider && connection) {
+  if (hasExternal && connection) {
     await db.mailSendJob.create({
       data: { emailMessageId: senderMsgId },
     });
@@ -471,7 +468,7 @@ export async function replyToThread(
             address: r.address,
             recipientType: "TO" as const,
             route: r.internal ? ("CONVO_INTERNAL" as const) : ("EXTERNAL_PROVIDER" as const),
-            status: "QUEUED" as const,
+            status: r.internal ? ("DELIVERED" as const) : ("QUEUED" as const),
           })),
         },
       },
@@ -497,7 +494,7 @@ export async function replyToThread(
     return senderMsg.id;
   }, { timeout: MAIL_TX_TIMEOUT_MS, maxWait: MAIL_TX_MAX_WAIT_MS });
 
-  if (connectionForReply) {
+  if (connectionForReply && recipients.some((r) => !r.internal)) {
     await db.mailSendJob.create({ data: { emailMessageId: senderMsgId } });
     if (deps.config) kickMailOutbox({ db, config: deps.config });
   }

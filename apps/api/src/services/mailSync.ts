@@ -236,13 +236,12 @@ async function processSendJob(
     throw new Error(`Provider ${connection.provider} not configured`);
   }
 
-  // Build outgoing mail — send to every recipient through the provider so the
-  // message lands in their inbox and in the sender's SENT folder. Convo-
-  // internal recipients additionally receive a mirrored copy in their Convo
-  // mailbox; the provider send still shows up in their Gmail.
-  const to = message.recipients.filter((r) => r.recipientType === "TO").map((r) => ({ address: r.address }));
-  const cc = message.recipients.filter((r) => r.recipientType === "CC").map((r) => ({ address: r.address }));
-  const bcc = message.recipients.filter((r) => r.recipientType === "BCC").map((r) => ({ address: r.address }));
+  // Build outgoing mail — only external recipients need provider delivery.
+  // Convo-internal recipients already have a mirrored copy.
+  const external = message.recipients.filter((r) => r.route === "EXTERNAL_PROVIDER");
+  const to = external.filter((r) => r.recipientType === "TO").map((r) => ({ address: r.address }));
+  const cc = external.filter((r) => r.recipientType === "CC").map((r) => ({ address: r.address }));
+  const bcc = external.filter((r) => r.recipientType === "BCC").map((r) => ({ address: r.address }));
 
   const receipt = await sendMailWithProvider({
     provider,
@@ -279,9 +278,9 @@ async function processSendJob(
     },
   });
 
-  // Mark all recipients as delivered via the provider.
+  // Mark external recipients as delivered.
   await deps.db.emailRecipient.updateMany({
-    where: { emailMessageId: message.id },
+    where: { emailMessageId: message.id, route: "EXTERNAL_PROVIDER" },
     data: { status: "DELIVERED" },
   });
 
