@@ -304,12 +304,15 @@ export async function composeMail(
     throw badRequest("Choose at least one recipient other than yourself");
   }
 
+  // Always route outbound through the sender's provider (Gmail API): this is
+  // what users expect — the recipient's Gmail inbox and the sender's SENT
+  // folder both see the message. Convo-internal recipients additionally get a
+  // mirrored copy in their Convo mailbox for realtime delivery.
+  const connection = await db.mailConnection.findFirst({
+    where: { emailIdentity: { userId }, status: "CONNECTED" },
+  });
   const hasExternal = recipients.some((r) => !r.internal);
-  const connection = hasExternal
-    ? await db.mailConnection.findFirst({
-        where: { emailIdentity: { userId }, status: "CONNECTED" },
-      })
-    : null;
+  const willSendViaProvider = Boolean(connection) && (hasExternal || recipients.length > 0);
 
   const threadKey = randomUUID();
   const internetMessageId = `<${randomUUID()}@${MAIL_DOMAIN}>`;
@@ -368,7 +371,7 @@ export async function composeMail(
     return senderMsg.id;
   }, { timeout: MAIL_TX_TIMEOUT_MS, maxWait: MAIL_TX_MAX_WAIT_MS });
 
-  if (hasExternal && connection) {
+  if (willSendViaProvider && connection) {
     await db.mailSendJob.create({
       data: { emailMessageId: senderMsgId },
     });
@@ -441,15 +444,12 @@ export async function replyToThread(
     isExternal: p.isExternal,
   }));
 
+  const connectionForReply = await db.mailConnection.findFirst({
+    where: { emailIdentity: { userId }, status: "CONNECTED" },
+  });
+
   const senderMsgId = await db.$transaction(async (tx) => {
     await tx.emailThread.update({ where: { id: own.id }, data: { lastActivityAt: now } });
-
-    const hasExternal = recipients.some((r) => !r.internal);
-    const connection = hasExternal
-      ? await tx.mailConnection.findFirst({
-          where: { emailIdentity: { userId }, status: "CONNECTED" },
-        })
-      : null;
 
     const senderMsg = await tx.emailMessage.create({
       data: {
@@ -465,13 +465,13 @@ export async function replyToThread(
         bodyText: input.body,
         clientSendId: input.clientSendId,
         sentAt: now,
-        provider: connection?.provider ?? null,
+        provider: connectionForReply?.provider ?? null,
         recipients: {
           create: recipients.map((r) => ({
             address: r.address,
             recipientType: "TO" as const,
             route: r.internal ? ("CONVO_INTERNAL" as const) : ("EXTERNAL_PROVIDER" as const),
-            status: r.internal ? ("DELIVERED" as const) : ("QUEUED" as const),
+            status: "QUEUED" as const,
           })),
         },
       },
@@ -497,14 +497,9 @@ export async function replyToThread(
     return senderMsg.id;
   }, { timeout: MAIL_TX_TIMEOUT_MS, maxWait: MAIL_TX_MAX_WAIT_MS });
 
-  if (recipients.some((r) => !r.internal)) {
-    const conn = await db.mailConnection.findFirst({
-      where: { emailIdentity: { userId }, status: "CONNECTED" },
-    });
-    if (conn) {
-      await db.mailSendJob.create({ data: { emailMessageId: senderMsgId } });
-      if (deps.config) kickMailOutbox({ db, config: deps.config });
-    }
+  if (connectionForReply) {
+    await db.mailSendJob.create({ data: { emailMessageId: senderMsgId } });
+    if (deps.config) kickMailOutbox({ db, config: deps.config });
   }
 
   const message = await db.emailMessage.findUniqueOrThrow({
