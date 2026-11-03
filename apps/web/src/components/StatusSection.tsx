@@ -626,9 +626,8 @@ function StatusComposer({
   onClose: () => void;
   onPosted: () => void;
 }) {
-  const [kind, setKind] = useState<"TEXT" | "IMAGE" | "VIDEO" | "URL">("TEXT");
   const [text, setText] = useState("");
-  const [media, setMedia] = useState<{ storageKey: string; mimeType: string; previewUrl: string } | null>(null);
+  const [media, setMedia] = useState<{ storageKey: string; mimeType: string; previewUrl: string; isVideo: boolean } | null>(null);
   const [hours, setHours] = useState(24);
   const [visibility, setVisibility] = useState<StatusVisibility>("EVERYONE");
   const [shareReceipts, setShareReceipts] = useState(true);
@@ -648,8 +647,8 @@ function StatusComposer({
         storageKey: result.storageKey,
         mimeType: result.mimeType,
         previewUrl: URL.createObjectURL(file),
+        isVideo: result.kind === "VIDEO",
       });
-      setKind(result.kind === "VIDEO" ? "VIDEO" : "IMAGE");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -668,11 +667,19 @@ function StatusComposer({
               .map((p) => p.trim())
               .filter(Boolean)
           : [];
+      const trimmed = text.trim();
+      // Auto-detect kind: media wins, then URL, then text.
+      let kind: "TEXT" | "IMAGE" | "VIDEO" | "URL" = "TEXT";
+      if (media) {
+        kind = media.isVideo ? "VIDEO" : "IMAGE";
+      } else if (/^https?:\/\/\S+$/i.test(trimmed)) {
+        kind = "URL";
+      }
       await api.postStatus({
         kind,
-        text: kind === "IMAGE" || kind === "VIDEO" ? (text.trim() || undefined) : text.trim(),
-        storageKey: kind === "IMAGE" || kind === "VIDEO" ? media?.storageKey : undefined,
-        mimeType: kind === "IMAGE" || kind === "VIDEO" ? media?.mimeType : undefined,
+        text: trimmed || undefined,
+        storageKey: media?.storageKey,
+        mimeType: media?.mimeType,
         durationHours: hours,
         visibility,
         userIds,
@@ -685,7 +692,7 @@ function StatusComposer({
     }
   };
 
-  const needsUpload = (kind === "IMAGE" || kind === "VIDEO") && !media;
+  const canPost = (text.trim().length > 0 || media !== null) && !uploading && selfUserId.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -700,66 +707,47 @@ function StatusComposer({
           </button>
         </div>
 
-        <div className="mt-4 flex gap-1 rounded-full bg-ink-100 p-1 dark:bg-night-raised">
-          {(["TEXT", "IMAGE", "VIDEO", "URL"] as const).map((option) => (
-            <button
-              key={option}
-              onClick={() => setKind(option)}
-              className={cx(
-                "flex-1 rounded-full py-1.5 text-xs font-semibold transition-colors",
-                kind === option
-                  ? "bg-white text-ink-900 shadow-sm dark:bg-night-surface dark:text-white"
-                  : "text-ink-500",
-              )}
-            >
-              {option === "TEXT" ? "Text" : option === "URL" ? "Link" : option === "IMAGE" ? "Photo" : "Video"}
-            </button>
-          ))}
-        </div>
-
         <div className="mt-4 space-y-4">
-          {(kind === "IMAGE" || kind === "VIDEO") && (
-            <div>
-              <input
-                ref={fileRef}
-                type="file"
-                accept={kind === "IMAGE" ? "image/*" : "video/*"}
-                className="hidden"
-                onChange={(e) => void pickFile(e.target.files?.[0])}
-              />
-              <button
-                onClick={() => fileRef.current?.click()}
-                className="w-full rounded-card border-2 border-dashed border-ink-300 p-6 text-sm text-ink-500 transition-colors hover:border-iris-400 dark:border-night-border"
-              >
-                {uploading ? "Uploading…" : media ? "Replace selection" : `Choose a ${kind === "IMAGE" ? "photo" : "video"}`}
-              </button>
-              {media && (
-                <div className="mt-2 overflow-hidden rounded-xl bg-ink-100 dark:bg-night-raised">
-                  {kind === "IMAGE" ? (
-                    <img src={media.previewUrl} alt="" className="max-h-40 w-full object-contain" />
-                  ) : (
-                    <video src={media.previewUrl} className="max-h-40 w-full" controls />
-                  )}
-                </div>
+          <textarea
+            className="w-full resize-none rounded-card border border-ink-200 bg-white p-3 text-sm text-ink-900 outline-none transition-colors placeholder:text-ink-400 focus:border-iris-400 dark:border-night-border dark:bg-night-raised dark:text-white"
+            rows={3}
+            value={text}
+            autoFocus
+            onChange={(e) => setText(e.target.value)}
+            placeholder="What's on your mind? Paste a link, write something, or attach a photo/video…"
+          />
+
+          {media && (
+            <div className="relative overflow-hidden rounded-xl bg-ink-100 dark:bg-night-raised">
+              {media.isVideo ? (
+                <video src={media.previewUrl} className="max-h-48 w-full object-contain" controls />
+              ) : (
+                <img src={media.previewUrl} alt="" className="max-h-48 w-full object-contain" />
               )}
-              <Input
-                className="mt-3"
-                label="Caption (optional)"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-              />
+              <button
+                onClick={() => setMedia(null)}
+                className="absolute right-2 top-2 rounded-full bg-ink-900/60 p-1 text-white hover:bg-ink-900/80"
+                aria-label="Remove media"
+              >
+                <XIcon className="h-4 w-4" />
+              </button>
             </div>
           )}
 
-          {(kind === "TEXT" || kind === "URL") && (
-            <Input
-              label={kind === "TEXT" ? "What's on your mind?" : "Link (https://…)"}
-              value={text}
-              autoFocus
-              onChange={(e) => setText(e.target.value)}
-              placeholder={kind === "TEXT" ? "Say something" : "https://example.com"}
-            />
-          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,video/*"
+            className="hidden"
+            onChange={(e) => void pickFile(e.target.files?.[0])}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="w-full rounded-card border-2 border-dashed border-ink-300 p-3 text-sm text-ink-500 transition-colors hover:border-iris-400 disabled:opacity-60 dark:border-night-border"
+          >
+            {uploading ? "Uploading…" : media ? "Replace photo / video" : "Attach photo or video (optional)"}
+          </button>
 
           <div>
             <p className="mb-1.5 text-sm font-medium text-ink-600 dark:text-ink-300">Disappears after</p>
@@ -829,8 +817,8 @@ function StatusComposer({
 
           {error && <p className="text-sm text-rose-600">{error}</p>}
 
-          <Button block loading={busy} disabled={needsUpload || uploading || !text.trim() && kind !== "IMAGE" && kind !== "VIDEO" || (selfUserId.length === 0)} onClick={() => void submit()}>
-            {kind === "TEXT" ? "Post status" : kind === "URL" ? "Share link" : "Share media"}
+          <Button block loading={busy} disabled={!canPost} onClick={() => void submit()}>
+            Post status
           </Button>
         </div>
       </div>

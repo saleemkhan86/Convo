@@ -160,6 +160,7 @@ export async function runMailOutboxWorker(deps: MailSyncDeps): Promise<void> {
         await releaseAdvisoryLock(deps.db, lockKey);
       }
     } catch (error) {
+      console.error(`[mailOutbox] Job ${job.id} failed:`, error instanceof Error ? error.message : error);
       // Job failed; schedule retry or mark as failed.
       const attempts = job.attempts + 1;
       const maxAttempts = 5;
