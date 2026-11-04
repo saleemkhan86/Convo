@@ -293,14 +293,27 @@ async function processSendJob(
  * Postgres advisory locks use bigint keys; we hash the connection ID.
  */
 function connectionLockKey(connectionId: string): bigint {
-  // Simple hash: take first 8 chars of connection ID as hex.
-  const hex = connectionId.slice(0, 8).padEnd(8, "0");
-  return BigInt("0x" + hex);
+  return stringHashToBigInt(connectionId);
 }
 
 function jobLockKey(jobId: string): bigint {
-  const hex = jobId.slice(0, 8).padEnd(8, "0");
-  return BigInt("0x" + hex);
+  return stringHashToBigInt(jobId);
+}
+
+/**
+ * FNV-1a 64-bit hash → signed bigint suitable for pg_try_advisory_lock.
+ * cuids contain characters (w, x, y, z) that aren't valid hex, so slicing
+ * the id and parsing as `0x...` would throw. A hash also spreads keys evenly.
+ */
+function stringHashToBigInt(input: string): bigint {
+  let hash = 1469598103934665603n; // FNV-1a 64-bit offset
+  const prime = 1099511628211n;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= BigInt(input.charCodeAt(i));
+    hash = (hash * prime) & 0xffffffffffffffffn;
+  }
+  // Postgres bigint is signed; clamp to the positive half to avoid negatives.
+  return hash & 0x7fffffffffffffffn;
 }
 
 /**
